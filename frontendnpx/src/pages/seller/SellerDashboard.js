@@ -5,12 +5,17 @@ import Modal from '../../components/common/Modal';
 import ReadMore from '../../components/common/ReadMore';
 import ImageGallery from '../../components/common/ImageGallery';
 import SellerOrdersModal from '../../components/orders/SellerOrdersModal';
+// 🔥 NEW: Imported the Store Settings Profile Modal
+import SellerProfileModal from '../../components/profile/SellerProfileModal';
 
 const SellerDashboard = ({ user }) => {
   const [sellerProducts, setSellerProducts] = useState([]);
   const [editingProduct, setEditingProduct] = useState(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isOrdersModalOpen, setIsOrdersModalOpen] = useState(false);
+  
+  // 🔥 NEW: State for Store Settings Modal
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
 
   const [searchTerm, setSearchTerm] = useState('');
   const [stockFilter, setStockFilter] = useState('ALL');
@@ -22,6 +27,13 @@ const SellerDashboard = ({ user }) => {
       totalOrders: 0, 
       deliveredOrders: 0 
   });
+
+  const [toast, setToast] = useState({ visible: false, message: '', type: 'success' });
+
+  const showToast = (message, type = 'success') => {
+      setToast({ visible: true, message, type });
+      setTimeout(() => setToast({ visible: false, message: '', type: 'success' }), 3000);
+  };
 
   const loadDashboardData = async () => {
     try {
@@ -47,6 +59,7 @@ const SellerDashboard = ({ user }) => {
 
     } catch (err) {
       console.error("Failed to load dashboard data");
+      showToast("Failed to load dashboard data", "error");
     }
   };
 
@@ -56,23 +69,21 @@ const SellerDashboard = ({ user }) => {
 
   const handleUpdateProduct = async () => {
     const { id, name, price, qty, imageUrl, description, originalPrice, category, brand, weight, sku, isActive } = editingProduct;
-    if (!name || !price || qty === undefined) return alert("Core fields are required");
+    if (!name || !price || qty === undefined) return showToast("Core fields are required", "error");
 
     try {
       await axios.post('http://localhost:7071/api/UpdateProduct', {
         productId: id, name, price, stock: qty, imageUrl, description, originalPrice, category, brand, weight, sku, isActive
       });
-      alert("✅ Product Updated Successfully!");
+      showToast("Product Updated Successfully!", "success");
       setEditingProduct(null); 
       loadDashboardData(); 
     } catch (err) {
-      alert("Update failed: " + (err.response?.data || err.message));
+      showToast("Update failed: " + (err.response?.data || err.message), "error");
     }
   };
 
-  // 🔥 NEW: Quick Toggle for Active/Draft status
   const handleToggleVisibility = async (product) => {
-    // If isActive is undefined (old product), assume it's currently true, so we toggle it to false
     const newStatus = product.isActive === false ? true : false;
     
     try {
@@ -88,21 +99,24 @@ const SellerDashboard = ({ user }) => {
         brand: product.brand, 
         weight: product.weight, 
         sku: product.sku, 
-        isActive: newStatus // Only changing this one value
+        isActive: newStatus 
       });
-      loadDashboardData(); // Instantly refresh the UI
+      loadDashboardData(); 
+      showToast(newStatus ? "Product is now Live" : "Product hidden (Draft mode)", "success");
     } catch (err) {
-      alert("Status update failed: " + (err.response?.data || err.message));
+      showToast("Status update failed", "error");
     }
   };
 
   const handleDeleteProduct = async (productId) => {
-    if (!window.confirm("Delete this product?")) return;
+    if (!window.confirm("Are you sure you want to delete this product?")) return;
     try {
       await axios.delete(`http://localhost:7071/api/DeleteProduct?productId=${productId}&userId=${user.userId}`);
-      alert("Deleted");
+      showToast("Product Deleted", "success");
       loadDashboardData();
-    } catch (err) { alert("Delete failed"); }
+    } catch (err) { 
+      showToast("Delete failed", "error"); 
+    }
   };
 
   const handleAddProductSubmit = async () => {
@@ -117,7 +131,7 @@ const SellerDashboard = ({ user }) => {
     const description = document.getElementById('pDesc').value;
     const fileInput = document.getElementById('pImageInput');
 
-    if (!name || !price || !stock) return alert("Please fill all required text fields (*)");
+    if (!name || !price || !stock) return showToast("Please fill all required text fields (*)", "error");
     
     let processedImages = [];
     if (fileInput.files.length > 0) {
@@ -126,18 +140,18 @@ const SellerDashboard = ({ user }) => {
                  const base64 = await processFile(fileInput.files[i]);
                  processedImages.push(base64); 
             }
-        } catch (err) { return alert("Error processing images: " + err); }
+        } catch (err) { return showToast("Error processing images", "error"); }
     } else { 
-        return alert("Please upload at least one image."); 
+        return showToast("Please upload at least one image.", "error"); 
     }
 
     try {
         await axios.post('http://localhost:7071/api/AddProduct', { 
             userId: user.userId, name, price, stock, description, originalPrice: origPrice, 
-            category, brand, weight, sku, images: processedImages, isActive: true // Default to active
+            category, brand, weight, sku, images: processedImages, isActive: true 
         });
         
-        alert("✅ Product Added!");
+        showToast("Product Added Successfully!", "success");
         setIsAddModalOpen(false); 
         loadDashboardData();
         
@@ -147,7 +161,7 @@ const SellerDashboard = ({ user }) => {
         });
         if(fileInput) fileInput.value = ""; 
     } catch (err) { 
-        alert("Upload Failed: " + (err.response?.data?.error || err.message)); 
+        showToast("Upload Failed: " + (err.response?.data?.error || err.message), "error"); 
     }
   };
 
@@ -162,10 +176,39 @@ const SellerDashboard = ({ user }) => {
   });
 
   return (
-    <div>
+    <div style={{ position: 'relative', minHeight: '100vh', paddingBottom: '50px' }}>
+      
+      {toast.visible && (
+        <div style={{
+            position: 'fixed',
+            bottom: '30px',
+            right: '30px',
+            backgroundColor: toast.type === 'error' ? '#dc3545' : '#28a745',
+            color: 'white',
+            padding: '16px 24px',
+            borderRadius: '8px',
+            boxShadow: '0 10px 20px rgba(0,0,0,0.2)',
+            fontWeight: 'bold',
+            zIndex: 9999,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px',
+            transition: 'opacity 0.3s ease-in-out',
+            opacity: 1
+        }}>
+            <span style={{ fontSize: '20px' }}>{toast.type === 'error' ? '⚠️' : '✅'}</span>
+            {toast.message}
+        </div>
+      )}
+
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
           <h2>🏪 Seller Dashboard</h2>
+          
+          {/* 🔥 NEW: Added the Store Settings Button to the action bar */}
           <div style={{ display: 'flex', gap: '10px' }}>
+            <button onClick={() => setIsProfileModalOpen(true)} style={{ backgroundColor: '#6c757d', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>
+                ⚙️ Store Settings
+            </button>
             <button onClick={() => setIsAddModalOpen(true)} style={{ backgroundColor: '#28a745', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>
                 + Add New Product
             </button>
@@ -225,7 +268,7 @@ const SellerDashboard = ({ user }) => {
             <div key={i} style={{ 
                 border: '1px solid #ccc', padding: 15, borderRadius: 12, width: 320, background: 'white', 
                 boxShadow: '0 2px 5px rgba(0,0,0,0.1)', position: 'relative', 
-                opacity: (p.qty <= 0 || p.isActive === false) ? 0.6 : 1, // Dims if out of stock OR draft
+                opacity: (p.qty <= 0 || p.isActive === false) ? 0.6 : 1, 
                 transition: 'all 0.3s ease' 
             }}>
                 
@@ -235,7 +278,6 @@ const SellerDashboard = ({ user }) => {
                     </div>
                 )}
 
-                {/* 🔥 NEW: Draft Badge */}
                 {p.isActive === false && (
                     <div style={{ position: 'absolute', top: '25px', right: '25px', background: '#6c757d', color: 'white', padding: '6px 12px', borderRadius: '4px', fontWeight: 'bold', fontSize: '12px', zIndex: 10, letterSpacing: '1px', boxShadow: '0 2px 4px rgba(0,0,0,0.2)' }}>
                         DRAFT (HIDDEN)
@@ -302,7 +344,9 @@ const SellerDashboard = ({ user }) => {
                             {p.originalPrice > p.price && (
                                 <>
                                     <span style={{ textDecoration: 'line-through', color: '#888', fontSize: '0.9rem' }}>Rs.{p.originalPrice}</span>
-                                    <span style={{ color: 'green', fontSize: '0.9rem', fontWeight: 'bold' }}>({Math.round(((p.originalPrice - p.price) / p.originalPrice) * 100)}% OFF)</span>
+                                    <span style={{ color: 'green', fontSize: '0.9rem', fontWeight: 'bold' }}>
+                                        ({Math.round(((p.originalPrice - p.price) / p.originalPrice) * 100)}% OFF)
+                                    </span>
                                 </>
                             )}
                         </div>
@@ -315,7 +359,6 @@ const SellerDashboard = ({ user }) => {
 
                     </div>
                     
-                    {/* 🔥 NEW: Added the Active/Draft Toggle button */}
                     <div style={{ display: 'flex', gap: '5px', marginTop: '5px' }}>
                         <button 
                             onClick={() => handleToggleVisibility(p)} 
@@ -333,6 +376,13 @@ const SellerDashboard = ({ user }) => {
         )}
       </div>
 
+      {/* 🔥 NEW: Added the Seller Profile Modal below */}
+      <SellerProfileModal 
+          isOpen={isProfileModalOpen} 
+          onClose={() => setIsProfileModalOpen(false)} 
+          userId={user.userId} 
+      />
+
       <SellerOrdersModal 
           isOpen={isOrdersModalOpen} 
           onClose={() => {
@@ -343,7 +393,6 @@ const SellerDashboard = ({ user }) => {
       />
 
       <Modal isOpen={isAddModalOpen} onClose={() => setIsAddModalOpen(false)} title="Upload New Product">
-        {/* ... (Upload Modal Content remains exactly the same) ... */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
           <div>
               <label>Product Name *</label>
