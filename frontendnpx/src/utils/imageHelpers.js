@@ -1,3 +1,18 @@
+import axios from 'axios';
+
+// 🔥 ADDED "export" HERE SO WE CAN USE THIS DIRECTLY FOR BANNERS/LOGOS
+export const uploadBase64ToAzurite = async (fileName, base64Data) => {
+    try {
+        const res = await axios.post('http://localhost:7071/api/UploadImage', {
+            imageName: fileName,
+            imageBase64: base64Data
+        });
+        return res.data.imageUrl;
+    } catch (err) {
+        console.error("Azurite upload failed", err);
+        throw err;
+    }
+};
 // --- HELPER: SMART IMAGE PROCESSOR (Supports GIF, Multiple, and Center-Crop) ---
 export const processFile = (file) => {
   return new Promise((resolve, reject) => {
