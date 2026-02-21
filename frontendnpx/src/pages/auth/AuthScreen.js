@@ -1,0 +1,175 @@
+import React, { useState } from 'react';
+import axios from 'axios';
+
+const AuthScreen = ({ onUserAuthenticated }) => {
+  const [view, setView] = useState('login');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [fullName, setFullName] = useState('');
+  const [role, setRole] = useState('BUYER');
+  const [storeName, setStoreName] = useState('');
+  const [otp, setOtp] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [isVerifying, setIsVerifying] = useState(false);
+  
+  // 🔥 NEW: Custom Notification State
+  const [notify, setNotify] = useState({ text: '', type: '' });
+
+  // Helper to show modern notifications instead of ugly alerts
+  const showNotification = (text, type = 'success') => {
+      setNotify({ text, type });
+      // Auto-hide after 3.5 seconds
+      setTimeout(() => setNotify({ text: '', type: '' }), 3500);
+  };
+
+  const switchView = (newView) => {
+      setView(newView);
+      setIsVerifying(false); 
+      setOtp('');            
+      setNewPassword('');  
+      setNotify({ text: '', type: '' }); // Clear messages on tab switch
+  };
+
+  const handleInitiateSignup = async () => {
+    if (!email || !password || !fullName) return showNotification("Please fill all fields", "error");
+    try {
+        await axios.post('http://localhost:7071/api/SendOTP', { email });
+        setIsVerifying(true);
+        showNotification(`OTP sent to ${email}`, "success");
+    } catch (err) {
+        if (err.response && err.response.status === 409) {
+            showNotification("⚠️ This email is already registered! Please log in.", "error");
+            switchView('login'); 
+        } else {
+            showNotification("Failed to send OTP. Try again.", "error");
+        }
+    }
+  };
+
+  const handleCompleteSignup = async () => {
+    try {
+      const res = await axios.post('http://localhost:7071/api/VerifyOTP', { email, otp, fullName, password, role, storeName });
+      const userData = { userId: res.data.userId, role: res.data.role, name: res.data.name, token: res.data.token };
+      setIsVerifying(false);
+      
+      // We still use an alert here just once to welcome the user before redirecting, 
+      // but the annoying OTP alerts are gone!
+      if (userData.role === 'SELLER') alert(`✅ Welcome, ${userData.name}! Your Seller Dashboard is ready.`);
+      else alert(`✅ Welcome, ${userData.name}! Happy Shopping.`);
+      
+      onUserAuthenticated(userData);
+    } catch (err) {
+      showNotification("❌ Invalid or Expired OTP. Please try again.", "error");
+    }
+  };
+
+  const handleInitiateReset = async () => {
+    if(!email) return showNotification("Please enter email", "error");
+    try {
+        await axios.post('http://localhost:7071/api/SendOTP', { email, isReset: true }); 
+        setIsVerifying(true);
+        showNotification(`OTP sent to ${email}`, "success");
+    } catch (err) {
+        showNotification("Failed to send OTP. Check if email exists.", "error");
+    }
+  };
+
+  const handleFinalizeReset = async () => {
+    if(!otp || !newPassword) return showNotification("Fill all fields", "error");
+    try {
+        await axios.post('http://localhost:7071/api/ResetPassword', { email, otp, newPassword });
+        showNotification("✅ Password Updated! Please login.", "success");
+        setTimeout(() => switchView('login'), 2000); // Switch to login after 2 seconds
+    } catch (err) {
+        showNotification(err.response?.data || "Failed to reset password", "error");
+    }
+  };
+
+  const handleLogin = async () => {
+    try {
+      const res = await axios.post('http://localhost:7071/api/Login', { email, password });
+      const userData = { userId: res.data.userId, role: res.data.role, name: res.data.name, token: res.data.token };
+      onUserAuthenticated(userData);
+    } catch (err) {
+      if (err.response && err.response.data) showNotification(err.response.data, "error"); 
+      else showNotification("Login Failed. Please check your details.", "error");
+    }
+  };
+
+  return (
+    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', background: '#f4f6f8' }}>
+      <div style={{ width: 350, background: 'white', padding: 40, borderRadius: 10, boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>
+        <h2 style={{ textAlign: 'center', color: '#333' }}>
+            {view === 'login' ? 'Welcome Back' : view === 'register' ? 'Join Us' : 'Reset Password'}
+        </h2>
+        
+        {/* 🔥 THE INLINE NOTIFICATION BANNER */}
+        {notify.text && (
+            <div style={{
+                padding: '10px',
+                marginBottom: '15px',
+                borderRadius: '6px',
+                backgroundColor: notify.type === 'error' ? '#f8d7da' : '#d4edda',
+                color: notify.type === 'error' ? '#721c24' : '#155724',
+                fontSize: '14px',
+                textAlign: 'center',
+                border: `1px solid ${notify.type === 'error' ? '#f5c6cb' : '#c3e6cb'}`,
+                animation: 'fadeIn 0.3s ease-in-out'
+            }}>
+                {notify.text}
+            </div>
+        )}
+
+        {view === 'register' && !isVerifying && (
+            <>
+                <input placeholder="Full Name" onChange={e=>setFullName(e.target.value)} style={{width:'100%', padding:10, marginBottom:10, borderRadius:4, border:'1px solid #ccc', boxSizing: 'border-box'}} />
+                <select onChange={e=>setRole(e.target.value)} style={{width:'100%', padding:'10px', marginBottom:10, borderRadius:4, boxSizing: 'border-box'}}>
+                    <option value="BUYER">Buyer</option><option value="SELLER">Seller</option>
+                </select>
+                {role === 'SELLER' && <input placeholder="Store Name" onChange={e=>setStoreName(e.target.value)} style={{width:'100%', padding:10, marginBottom:10, borderRadius:4, border:'1px solid #ccc', boxSizing: 'border-box'}} />}
+            </>
+        )}
+
+        {isVerifying ? (
+            <div style={{ background: '#e8f5e9', padding: '20px', borderRadius: '12px', marginBottom: '15px', border: '1px solid #c8e6c9' }}>
+                <p style={{fontSize: '13px', color: '#666', marginTop: 0}}>Enter OTP sent to {email}</p>
+                <input placeholder="OTP" value={otp} onChange={e=>setOtp(e.target.value)} style={{width:'100%', padding:12, marginBottom:10, border:'1px solid #ddd', borderRadius:5, boxSizing: 'border-box'}} />
+                {view === 'forgot-password' && <input placeholder="New Password" type="password" value={newPassword} onChange={e=>setNewPassword(e.target.value)} style={{width:'100%', padding:12, marginBottom:10, border:'1px solid #ddd', borderRadius:5, boxSizing: 'border-box'}} />}
+                <button onClick={view==='forgot-password'?handleFinalizeReset:handleCompleteSignup} style={{width:'100%', padding:12, background:'green', color:'white', border:'none', borderRadius:5, cursor:'pointer', fontWeight:'bold'}}>Verify</button>
+            </div>
+        ) : (
+            <>
+                {view !== 'forgot-password' && (
+                    <>
+                        <input placeholder="Email" value={email} onChange={e=>setEmail(e.target.value)} style={{width:'100%', padding:10, marginBottom:10, borderRadius:4, border:'1px solid #ccc', boxSizing: 'border-box'}} />
+                        <input type="password" placeholder="Password" value={password} onChange={e=>setPassword(e.target.value)} style={{width:'100%', padding:10, marginBottom:10, borderRadius:4, border:'1px solid #ccc', boxSizing: 'border-box'}} />
+                        <button onClick={view==='login'?handleLogin:handleInitiateSignup} style={{width:'100%', padding:12, background:'#007bff', color:'white', border:'none', borderRadius:6, cursor:'pointer', fontWeight:'bold', fontSize:'1rem'}}>{view==='login'?'Login':'Sign Up'}</button>
+                    </>
+                )}
+            </>
+        )}
+
+        {view === 'forgot-password' && !isVerifying && (
+            <div>
+                <input placeholder="Email" value={email} onChange={e=>setEmail(e.target.value)} style={{width:'100%', padding:10, marginBottom:10, boxSizing: 'border-box', border:'1px solid #ccc', borderRadius:4}} />
+                <button onClick={handleInitiateReset} style={{width:'100%', padding:12, background:'#ffc107', border:'none', borderRadius:6, cursor:'pointer', fontWeight:'bold'}}>Send OTP</button>
+            </div>
+        )}
+
+        <div style={{textAlign:'center', marginTop:20, fontSize:13}}>
+            {view === 'login' ? (
+                <>
+                    <span onClick={()=>switchView('forgot-password')} style={{color:'#007bff', cursor:'pointer'}}>Forgot Password?</span>
+                    <br /><br />
+                    <span onClick={()=>switchView('register')} style={{color:'#007bff', cursor:'pointer'}}>Create an account</span>
+                </>
+            ) : (
+                <span onClick={()=>switchView('login')} style={{color:'#007bff', cursor:'pointer'}}>Back to Login</span>
+            )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default AuthScreen;
