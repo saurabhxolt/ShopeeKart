@@ -29,14 +29,19 @@ function App() {
   const addToCart = async (product) => {
     if (cartItems.length > 0) {
         const existingSellerId = cartItems[0].sellerId;
-        if (existingSellerId && existingSellerId !== selectedSeller.id) {
+        // Safely extract the ID from the selectedSeller object
+        const currentShopId = selectedSeller.id || selectedSeller.SellerId;
+        
+        if (existingSellerId && existingSellerId !== currentShopId) {
             if (!window.confirm(`⚠️ Switch Shop?\n\nYour cart contains items from another shop.\n\nClick OK to CLEAR cart and add this item.\nClick Cancel to keep your existing cart.`)) return;
             setCartItems([]); 
         }
     }
 
     let currentQtyInCart = 0;
-    if (!(cartItems.length > 0 && cartItems[0].sellerId !== selectedSeller.id)) {
+    const currentShopIdForQty = selectedSeller.id || selectedSeller.SellerId;
+
+    if (!(cartItems.length > 0 && cartItems[0].sellerId !== currentShopIdForQty)) {
          const existingItem = cartItems.find(item => item.id === product.id);
          currentQtyInCart = existingItem ? existingItem.qty : 0;
     }
@@ -48,14 +53,15 @@ function App() {
     axios.post('http://localhost:7071/api/AddToCart', { userId: user.userId, productId: product.id }).catch(e => console.error(e));
 
     setCartItems(prev => {
-        if (prev.length > 0 && prev[0].sellerId !== selectedSeller.id) {
-             return [{ ...product, qty: 1, sellerId: selectedSeller.id, maxStock: product.qty }];
+        const targetSellerId = selectedSeller.id || selectedSeller.SellerId;
+        if (prev.length > 0 && prev[0].sellerId !== targetSellerId) {
+             return [{ ...product, qty: 1, sellerId: targetSellerId, maxStock: product.qty }];
         }
         const existing = prev.find(item => item.id === product.id);
         if (existing) {
             return prev.map(item => item.id === product.id ? { ...item, qty: (item.qty || 1) + 1 } : item);
         }
-        return [...prev, { ...product, qty: 1, sellerId: selectedSeller.id, maxStock: product.qty }];
+        return [...prev, { ...product, qty: 1, sellerId: targetSellerId, maxStock: product.qty }];
     });
     setIsCartOpen(true);
   };
@@ -103,7 +109,8 @@ function App() {
     }
   };
 
-  const handlePlaceOrder = async (address) => {
+  // 🔥 UPDATED: Now receives the ratings object from the CheckoutModal
+  const handlePlaceOrder = async (address, ratings) => {
       setIsVerifyingStock(true); 
       try {
           const res = await axios.post('http://localhost:7071/api/PlaceOrder', {
@@ -112,14 +119,24 @@ function App() {
           });
           
           if (res.status === 200) {
+              
+              // 🔥 NEW: Save the ratings for all purchased items
+              for (const item of cartItems) {
+                  if (ratings[item.id]) {
+                      await axios.post('http://localhost:7071/api/AddRating', {
+                          productId: item.id,
+                          userId: user.userId,
+                          rating: ratings[item.id]
+                      }).catch(e => console.error("Rating save failed", e));
+                  }
+              }
+
               setCartItems([]);              
               setRefreshKey(prev => prev + 1); 
-              
-              // 🔥 RETURN the order ID instead of showing an alert or closing the modal!
+              setIsCheckoutModalOpen(false); // Ensure modal closes
               return res.data.orderId; 
           }
       } catch (err) {
-          // 🔥 THROW the error so the Checkout Modal can catch it and show it inline
           throw new Error(err.response?.data || err.message);
       } finally {
           setIsVerifyingStock(false);    
@@ -134,8 +151,11 @@ function App() {
       {/* HEADER */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom:'20px', borderBottom:'1px solid #eee', marginBottom:'20px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-              <h1 style={{margin:0, fontSize:'24px'}}>{user.role === 'BUYER' && selectedSeller ? `Shop: ${selectedSeller.name}` : `Welcome, ${user.name}!!`}</h1>
-          </div>
+                  {/* Clean welcome message */}
+                  <h1 style={{ margin: 0, fontSize: '24px' }}>
+                      Welcome, {user.name}!!
+                  </h1>          
+                </div>
 
           <div style={{display:'flex', gap:'20px', alignItems:'center'}}>
               {user.role === 'BUYER' && (
@@ -157,21 +177,24 @@ function App() {
       
       {/* GLOBAL MODALS */}
       <CartSidebar isOpen={isCartOpen} onClose={() => setIsCartOpen(false)} cartItems={cartItems} onRemove={removeFromCart} onCheckout={handleVerifyAndCheckout} isVerifyingStock={isVerifyingStock} onUpdateQty={handleUpdateQty} />
+      
+      {/* 🔥 CHECKOUT MODAL WILL NOW PASS BACK THE RATINGS OBJECT */}
       <CheckoutModal 
           isOpen={isCheckoutModalOpen} 
           onClose={() => setIsCheckoutModalOpen(false)} 
-          cartItems={cartItems} // <-- ADD THIS LINE
+          cartItems={cartItems} 
           cartTotal={cartItems.reduce((sum, item) => sum + (Number(item.price) * (item.qty || 1)), 0)} 
           onConfirmOrder={handlePlaceOrder} 
       />
+      
       <BuyerOrdersModal isOpen={isBuyerOrdersOpen} onClose={() => setIsBuyerOrdersOpen(false)} userId={user?.userId} />
 
       {/* PAGE RENDERING based on Role & State */}
       {user.role === 'ADMIN' && <AdminDashboard user={user} />}
       {user.role === 'SELLER' && <SellerDashboard user={user} />}
-      {user.role === 'BUYER' && !selectedSeller && <BuyerShopList onEnterShop={(id, name) => setSelectedSeller({ id, name })} refreshKey={refreshKey} />}
-      {user.role === 'BUYER' && selectedSeller && <BuyerShopView selectedSeller={selectedSeller} onBack={() => setSelectedSeller(null)} addToCart={addToCart} refreshKey={refreshKey} />}
-    </div>
+      
+      {user.role === 'BUYER' && !selectedSeller && <BuyerShopList onEnterShop={(shop) => setSelectedSeller(shop)} refreshKey={refreshKey} />}
+      {user.role === 'BUYER' && selectedSeller && <BuyerShopView user={user} selectedSeller={selectedSeller} onBack={() => setSelectedSeller(null)} addToCart={addToCart} refreshKey={refreshKey} />}    </div>
   );
 }
 

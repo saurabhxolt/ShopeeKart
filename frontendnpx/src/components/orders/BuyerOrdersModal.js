@@ -6,6 +6,10 @@ import { parseImages } from '../../utils/imageHelpers';
 const BuyerOrdersModal = ({ isOpen, onClose, userId }) => {
     const [orders, setOrders] = useState([]);
     const [loading, setLoading] = useState(false);
+    
+    // 🔥 NEW: States for inline ratings
+    const [hoveredStar, setHoveredStar] = useState({});
+    const [submittedRatings, setSubmittedRatings] = useState({});
 
     const fetchOrders = useCallback(async () => {
         if (!userId) return;
@@ -21,6 +25,22 @@ const BuyerOrdersModal = ({ isOpen, onClose, userId }) => {
     }, [userId]);
 
     useEffect(() => { if (isOpen) fetchOrders(); }, [isOpen, fetchOrders]);
+
+    // 🔥 NEW: Handle submitting a rating from the orders page
+    const handleRateItem = async (productId, rating) => {
+        try {
+            await axios.post('http://localhost:7071/api/AddRating', {
+                productId: productId,
+                userId: userId,
+                rating: rating
+            });
+            // Visually save the rating so the stars stay yellow
+            setSubmittedRatings(prev => ({ ...prev, [productId]: rating }));
+            alert(`Success! You rated this item ${rating} stars.`);
+        } catch (err) {
+            alert("Failed to submit rating.");
+        }
+    };
 
     const getProgress = (status) => {
         switch (status) {
@@ -58,6 +78,7 @@ const BuyerOrdersModal = ({ isOpen, onClose, userId }) => {
                     orders.map(o => {
                         const products = o.ItemsJson ? JSON.parse(o.ItemsJson) : [];
                         const isCancelled = o.Status === 'Cancelled';
+                        const isDelivered = o.Status === 'Delivered';
 
                         return (
                             <div key={o.OrderId} style={{ border: '1px solid #e0e0e0', borderRadius: '12px', padding: '20px', marginBottom: '20px', background: isCancelled ? '#fffcfc' : '#fff', boxShadow: '0 4px 10px rgba(0,0,0,0.03)' }}>
@@ -87,7 +108,6 @@ const BuyerOrdersModal = ({ isOpen, onClose, userId }) => {
                                                 transition: 'width 0.8s ease-in-out' 
                                             }}></div>
                                         </div>
-                                        {/* Properly spaced labels */}
                                         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', marginTop: '8px', color: '#666', fontWeight: 'bold' }}>
                                             <span style={{ color: o.Status === 'Placed' || o.Status === 'Confirmed' || o.Status === 'Shipped' || o.Status === 'Delivered' ? '#333' : '#aaa' }}>Placed</span>
                                             <span style={{ color: o.Status === 'Confirmed' || o.Status === 'Shipped' || o.Status === 'Delivered' ? '#333' : '#aaa' }}>Confirmed</span>
@@ -99,22 +119,56 @@ const BuyerOrdersModal = ({ isOpen, onClose, userId }) => {
 
                                 {/* ITEMS LIST */}
                                 <div>
-                                    {products.map((p, idx) => (
-                                        <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '15px', marginBottom: '15px', opacity: isCancelled ? 0.6 : 1 }}>
-                                            <div style={{ width: '60px', height: '60px', border: '1px solid #ddd', borderRadius: '8px', overflow: 'hidden', background: '#f8f9fa' }}>
-                                                <img src={parseImages(p.ImageUrl)[0]} alt={p.Name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                                            </div>
-                                            <div style={{ flex: 1 }}>
-                                                <div style={{ fontWeight: 'bold', fontSize: '15px', color: '#333', marginBottom: '3px' }}>{p.Name}</div>
-                                                <div style={{ fontSize: '13px', color: '#666' }}>
-                                                    Qty: <strong>{p.Qty}</strong> × Rs.{p.Price}
+                                    {products.map((p, idx) => {
+                                        const itemId = p.id || p.ProductId; // Safety check for ID
+                                        
+                                        return (
+                                            <div key={idx} style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '15px', opacity: isCancelled ? 0.6 : 1, borderBottom: idx < products.length - 1 ? '1px dashed #eee' : 'none', paddingBottom: idx < products.length - 1 ? '15px' : '0' }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+                                                    <div style={{ width: '60px', height: '60px', border: '1px solid #ddd', borderRadius: '8px', overflow: 'hidden', background: '#f8f9fa' }}>
+                                                        <img src={parseImages(p.ImageUrl)[0]} alt={p.Name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                                    </div>
+                                                    <div style={{ flex: 1 }}>
+                                                        <div style={{ fontWeight: 'bold', fontSize: '15px', color: '#333', marginBottom: '3px' }}>{p.Name}</div>
+                                                        <div style={{ fontSize: '13px', color: '#666' }}>
+                                                            Qty: <strong>{p.Qty}</strong> × Rs.{p.Price}
+                                                        </div>
+                                                    </div>
+                                                    <div style={{ fontWeight: 'bold', fontSize: '15px', color: '#333' }}>
+                                                        Rs. {p.Price * p.Qty}
+                                                    </div>
                                                 </div>
+
+                                                {/* 🔥 NEW: RATING UI (ONLY VISIBLE IF DELIVERED) */}
+                                                {isDelivered && (
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginLeft: '75px', background: '#f8f9fa', padding: '8px 12px', borderRadius: '6px' }}>
+                                                        <span style={{ fontSize: '12px', color: '#555', fontWeight: 'bold' }}>Rate Product:</span>
+                                                        <div style={{ display: 'flex', gap: '4px' }}>
+                                                            {[1, 2, 3, 4, 5].map(star => (
+                                                                <span
+                                                                    key={star}
+                                                                    onMouseEnter={() => setHoveredStar({...hoveredStar, [itemId]: star})}
+                                                                    onMouseLeave={() => setHoveredStar({...hoveredStar, [itemId]: 0})}
+                                                                    onClick={() => handleRateItem(itemId, star)}
+                                                                    style={{
+                                                                        fontSize: '22px',
+                                                                        cursor: 'pointer',
+                                                                        lineHeight: '1',
+                                                                        color: star <= (hoveredStar[itemId] || submittedRatings[itemId] || 0) ? '#ff9f00' : '#e0e0e0',
+                                                                        transition: 'color 0.2s'
+                                                                    }}
+                                                                    title={`Rate ${star} stars`}
+                                                                >
+                                                                    ★
+                                                                </span>
+                                                            ))}
+                                                        </div>
+                                                        {submittedRatings[itemId] && <span style={{ fontSize: '12px', color: '#28a745', marginLeft: '10px' }}>✓ Saved</span>}
+                                                    </div>
+                                                )}
                                             </div>
-                                            <div style={{ fontWeight: 'bold', fontSize: '15px', color: '#333' }}>
-                                                Rs. {p.Price * p.Qty}
-                                            </div>
-                                        </div>
-                                    ))}
+                                        );
+                                    })}
                                 </div>
 
                                 {/* FOOTER: Total Amount */}

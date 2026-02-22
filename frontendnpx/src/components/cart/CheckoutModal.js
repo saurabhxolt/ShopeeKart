@@ -14,32 +14,34 @@ const INDIAN_STATES = [
 
 const CheckoutModal = ({ isOpen, onClose, cartItems = [], cartTotal, onConfirmOrder }) => {
     const [formData, setFormData] = useState({
-        fullName: '',
-        phone: '',
-        addressLine: '',
-        pincode: '',
-        city: '',
-        district: '', 
-        state: ''
+        fullName: '', phone: '', addressLine: '', pincode: '', city: '', district: '', state: ''
     });
     
-    // 🔥 NEW: Payment method state
     const [paymentMethod, setPaymentMethod] = useState('COD');
     const [isPlacingOrder, setIsPlacingOrder] = useState(false);
     const [isFetchingPin, setIsFetchingPin] = useState(false);
     const [orderId, setOrderId] = useState(null);
     const [error, setError] = useState('');
 
+    // 🔥 NEW: States to handle ratings in the checkout modal
+    const [ratings, setRatings] = useState({});
+    const [hoveredStar, setHoveredStar] = useState({});
+
     useEffect(() => {
         if (isOpen) {
             setFormData({ fullName: '', phone: '', addressLine: '', pincode: '', city: '', district: '', state: '' });
-            setPaymentMethod('COD'); // Reset payment method
+            setPaymentMethod('COD'); 
             setOrderId(null);
             setError('');
             setIsPlacingOrder(false);
             setIsFetchingPin(false);
+            
+            // 🔥 NEW: Initialize all cart items to a default 5-star rating
+            const initRatings = {};
+            cartItems.forEach(item => initRatings[item.id] = 5);
+            setRatings(initRatings);
         }
-    }, [isOpen]);
+    }, [isOpen, cartItems]);
 
     if (!isOpen) return null;
 
@@ -71,7 +73,6 @@ const CheckoutModal = ({ isOpen, onClose, cartItems = [], cartTotal, onConfirmOr
     const handleInputChange = (e) => {
         const { name, value } = e.target;
         
-        // 🔥 FIX: Strict Phone Number Logic (Max 10 digits, numbers only)
         if (name === 'phone') {
             const numericValue = value.replace(/\D/g, '').slice(0, 10);
             setFormData({ ...formData, phone: numericValue });
@@ -81,10 +82,7 @@ const CheckoutModal = ({ isOpen, onClose, cartItems = [], cartTotal, onConfirmOr
         if (name === 'pincode') {
             const numericValue = value.replace(/\D/g, '').slice(0, 6);
             setFormData({ ...formData, pincode: numericValue });
-            
-            if (numericValue.length === 6) {
-                fetchPincodeDetails(numericValue);
-            }
+            if (numericValue.length === 6) fetchPincodeDetails(numericValue);
             return;
         }
 
@@ -96,7 +94,6 @@ const CheckoutModal = ({ isOpen, onClose, cartItems = [], cartTotal, onConfirmOr
             return setError("Please fill in all required address fields.");
         }
 
-        // 🔥 FIX: Check if phone number is exactly 10 digits
         if (formData.phone.length !== 10) {
             return setError("Please enter a valid 10-digit mobile number.");
         }
@@ -104,11 +101,11 @@ const CheckoutModal = ({ isOpen, onClose, cartItems = [], cartTotal, onConfirmOr
         setError('');
         setIsPlacingOrder(true);
         
-        // Format the address cleanly and append the payment method
         const formattedAddress = `${formData.fullName} | Ph: +91 ${formData.phone}\n${formData.addressLine}\n${formData.city}, Dist: ${formData.district}, ${formData.state} - ${formData.pincode}\nPayment: ${paymentMethod}`;
 
         try {
-            const newOrderId = await onConfirmOrder(formattedAddress);
+            // 🔥 NEW: Pass BOTH the address AND the ratings object back to App.js
+            const newOrderId = await onConfirmOrder(formattedAddress, ratings);
             setOrderId(newOrderId); 
         } catch (err) {
             setError(err.message || "Failed to place order. Please try again.");
@@ -119,7 +116,7 @@ const CheckoutModal = ({ isOpen, onClose, cartItems = [], cartTotal, onConfirmOr
 
     return (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1300, padding: '20px' }}>
-            <div style={{ backgroundColor: 'white', borderRadius: '12px', width: '100%', maxWidth: '900px', maxHeight: '90vh', overflowY: 'auto', position: 'relative', boxShadow: '0 20px 40px rgba(0,0,0,0.4)', animation: 'fadeIn 0.3s ease' }}>
+            <div style={{ backgroundColor: 'white', borderRadius: '12px', width: '100%', maxWidth: '1000px', maxHeight: '90vh', overflowY: 'auto', position: 'relative', boxShadow: '0 20px 40px rgba(0,0,0,0.4)', animation: 'fadeIn 0.3s ease' }}>
                 
                 {!orderId && (
                     <button onClick={onClose} style={{ position: 'absolute', top: '15px', right: '20px', background: 'none', border: 'none', fontSize: '28px', cursor: 'pointer', color: '#555', zIndex: 10 }}>&times;</button>
@@ -131,29 +128,23 @@ const CheckoutModal = ({ isOpen, onClose, cartItems = [], cartTotal, onConfirmOr
                         <div style={{ fontSize: '70px', marginBottom: '15px', animation: 'bounce 0.5s ease' }}>🎉</div>
                         <h1 style={{ color: '#28a745', margin: '0 0 10px 0' }}>Order Confirmed!</h1>
                         <p style={{ color: '#555', fontSize: '15px', marginBottom: '5px' }}>Your order has been successfully placed.</p>
-                        <p style={{ color: '#888', fontSize: '13px', marginBottom: '25px' }}>We've sent a confirmation email with your receipt.</p>
+                        <p style={{ color: '#888', fontSize: '13px', marginBottom: '25px' }}>Your ratings have been saved.</p>
                         
                         <div style={{ background: '#f8f9fa', border: '2px dashed #28a745', padding: '20px', borderRadius: '8px', display: 'inline-block', marginBottom: '15px', minWidth: '250px' }}>
                             <span style={{ display: 'block', fontSize: '12px', color: '#666', textTransform: 'uppercase', letterSpacing: '1px' }}>Tracking ID</span>
                             <strong style={{ fontSize: '28px', color: '#333' }}>#{orderId}</strong>
                         </div>
 
-                        {/* 🔥 NEW: Estimated Delivery Box */}
                         <div style={{ background: '#e8f5e9', color: '#155724', padding: '12px', borderRadius: '8px', display: 'inline-block', marginBottom: '30px', border: '1px solid #c3e6cb' }}>
                             <span style={{ fontSize: '16px' }}>📦</span> <strong>Estimated Delivery:</strong>{' '}
                             {new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toLocaleDateString('en-IN', { weekday: 'short', month: 'short', day: 'numeric' })}
                         </div>
 
-                        {/* 🔥 NEW: Dual Action Buttons */}
                         <div style={{ display: 'flex', gap: '15px', justifyContent: 'center' }}>
                             <button onClick={onClose} style={{ padding: '12px 25px', border: '1px solid #007bff', background: 'white', color: '#007bff', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', fontSize: '15px', transition: 'all 0.2s' }}>
                                 Continue Shopping
                             </button>
-                            <button onClick={() => {
-                                onClose();
-                                // Note: You can pass a prop here like openMyOrders() to trigger the buyer orders modal!
-                                alert("Opening My Orders..."); 
-                            }} style={{ padding: '12px 25px', border: 'none', background: '#007bff', color: 'white', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', fontSize: '15px', boxShadow: '0 4px 6px rgba(0, 123, 255, 0.2)' }}>
+                            <button onClick={() => { onClose(); alert("Opening My Orders..."); }} style={{ padding: '12px 25px', border: 'none', background: '#007bff', color: 'white', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', fontSize: '15px', boxShadow: '0 4px 6px rgba(0, 123, 255, 0.2)' }}>
                                 Track My Order
                             </button>
                         </div>
@@ -181,7 +172,6 @@ const CheckoutModal = ({ isOpen, onClose, cartItems = [], cartTotal, onConfirmOr
                                 </div>
                                 <div>
                                     <label style={labelStyle}>Mobile Number *</label>
-                                    {/* Added dynamic visual cue if phone number is too short */}
                                     <input type="tel" name="phone" value={formData.phone} onChange={handleInputChange} style={{...inputStyle, borderColor: formData.phone && formData.phone.length < 10 ? '#ffc107' : '#ccc'}} placeholder="10-digit number" />
                                 </div>
                             </div>
@@ -210,16 +200,13 @@ const CheckoutModal = ({ isOpen, onClose, cartItems = [], cartTotal, onConfirmOr
                                     <label style={labelStyle}>State *</label>
                                     <select name="state" value={formData.state} onChange={handleInputChange} style={{...inputStyle, cursor: 'pointer', backgroundColor: 'white', padding: '11px'}}>
                                         <option value="" disabled>Select State</option>
-                                        {INDIAN_STATES.map(state => (
-                                            <option key={state} value={state}>{state}</option>
-                                        ))}
+                                        {INDIAN_STATES.map(state => <option key={state} value={state}>{state}</option>)}
                                     </select>
                                 </div>
                             </div>
 
                             <h4 style={{ color: '#555', marginBottom: '15px', borderTop: '1px solid #eee', paddingTop: '20px' }}>2. Payment Method</h4>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                                {/* COD OPTION */}
                                 <label style={{ border: `1px solid ${paymentMethod === 'COD' ? '#28a745' : '#ccc'}`, borderRadius: '8px', padding: '15px', background: paymentMethod === 'COD' ? '#f8fff9' : '#fff', display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', transition: 'all 0.2s' }}>
                                     <input type="radio" name="payment" value="COD" checked={paymentMethod === 'COD'} onChange={(e) => setPaymentMethod(e.target.value)} style={{ accentColor: '#28a745', width: '18px', height: '18px', cursor: 'pointer' }} />
                                     <div>
@@ -227,43 +214,45 @@ const CheckoutModal = ({ isOpen, onClose, cartItems = [], cartTotal, onConfirmOr
                                         <span style={{ fontSize: '12px', color: '#666' }}>Pay securely in cash when your order arrives.</span>
                                     </div>
                                 </label>
-
-                                {/* UPI OPTION */}
-                                <label style={{ border: `1px solid ${paymentMethod === 'UPI' ? '#007bff' : '#ccc'}`, borderRadius: '8px', padding: '15px', background: paymentMethod === 'UPI' ? '#f0f7ff' : '#fff', display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', transition: 'all 0.2s' }}>
-                                    <input type="radio" name="payment" value="UPI" checked={paymentMethod === 'UPI'} onChange={(e) => setPaymentMethod(e.target.value)} style={{ accentColor: '#007bff', width: '18px', height: '18px', cursor: 'pointer' }} />
-                                    <div>
-                                        <strong style={{ display: 'block', color: '#333' }}>UPI (GPay, PhonePe, Paytm)</strong>
-                                        <span style={{ fontSize: '12px', color: '#666' }}>Pay instantly via your UPI app.</span>
-                                    </div>
-                                </label>
-
-                                {/* CARD OPTION */}
-                                <label style={{ border: `1px solid ${paymentMethod === 'CARD' ? '#007bff' : '#ccc'}`, borderRadius: '8px', padding: '15px', background: paymentMethod === 'CARD' ? '#f0f7ff' : '#fff', display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', transition: 'all 0.2s' }}>
-                                    <input type="radio" name="payment" value="CARD" checked={paymentMethod === 'CARD'} onChange={(e) => setPaymentMethod(e.target.value)} style={{ accentColor: '#007bff', width: '18px', height: '18px', cursor: 'pointer' }} />
-                                    <div>
-                                        <strong style={{ display: 'block', color: '#333' }}>Credit / Debit Card</strong>
-                                        <span style={{ fontSize: '12px', color: '#666' }}>Visa, MasterCard, RuPay.</span>
-                                    </div>
-                                </label>
                             </div>
                         </div>
 
-                        {/* RIGHT COLUMN: ORDER SUMMARY */}
-                        <div style={{ flex: '1 1 300px', background: '#f8f9fa', padding: '40px', borderLeft: '1px solid #eee' }}>
-                            <h3 style={{ marginTop: 0, marginBottom: '25px', color: '#333' }}>Order Summary</h3>
+                        {/* RIGHT COLUMN: ORDER SUMMARY & RATING */}
+                        <div style={{ flex: '1 1 350px', background: '#f8f9fa', padding: '40px', borderLeft: '1px solid #eee' }}>
+                            <h3 style={{ marginTop: 0, marginBottom: '25px', color: '#333' }}>Order Summary & Review</h3>
                             
-                            <div style={{ maxHeight: '300px', overflowY: 'auto', paddingRight: '10px', marginBottom: '20px' }}>
+                            <div style={{ maxHeight: '350px', overflowY: 'auto', paddingRight: '10px', marginBottom: '20px' }}>
                                 {cartItems.map((item, idx) => (
-                                    <div key={idx} style={{ display: 'flex', gap: '15px', marginBottom: '15px', paddingBottom: '15px', borderBottom: '1px solid #e9ecef' }}>
-                                        <div style={{ width: '60px', height: '60px', background: 'white', borderRadius: '6px', border: '1px solid #ddd', overflow: 'hidden' }}>
-                                            <img src={parseImages(item.imageUrl)[0]} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                    <div key={idx} style={{ background: 'white', borderRadius: '8px', padding: '15px', marginBottom: '15px', border: '1px solid #e9ecef', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
+                                        <div style={{ display: 'flex', gap: '15px', marginBottom: '10px' }}>
+                                            <div style={{ width: '50px', height: '50px', background: '#eee', borderRadius: '6px', border: '1px solid #ddd', overflow: 'hidden' }}>
+                                                <img src={parseImages(item.imageUrl)[0]} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                            </div>
+                                            <div style={{ flex: 1 }}>
+                                                <div style={{ fontWeight: 'bold', fontSize: '14px', color: '#333', marginBottom: '4px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '180px' }}>{item.name}</div>
+                                                <div style={{ fontSize: '12px', color: '#888' }}>Qty: {item.qty} | ₹{item.price * item.qty}</div>
+                                            </div>
                                         </div>
-                                        <div style={{ flex: 1 }}>
-                                            <div style={{ fontWeight: 'bold', fontSize: '14px', color: '#333', marginBottom: '4px' }}>{item.name}</div>
-                                            <div style={{ fontSize: '12px', color: '#888' }}>Qty: {item.qty}</div>
-                                        </div>
-                                        <div style={{ fontWeight: 'bold', color: '#333' }}>
-                                            Rs. {item.price * item.qty}
+                                        
+                                        {/* 🔥 THE NEW RATING UI */}
+                                        <div style={{ borderTop: '1px dashed #eee', paddingTop: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                            <span style={{ fontSize: '12px', color: '#666', fontWeight: 'bold' }}>Rate Item:</span>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                {[1, 2, 3, 4, 5].map(star => (
+                                                    <span 
+                                                        key={star}
+                                                        onMouseEnter={() => setHoveredStar({...hoveredStar, [item.id]: star})}
+                                                        onMouseLeave={() => setHoveredStar({...hoveredStar, [item.id]: 0})}
+                                                        onClick={() => setRatings({...ratings, [item.id]: star})}
+                                                        style={{ 
+                                                            fontSize: '20px', cursor: 'pointer', lineHeight: '1', transition: 'color 0.2s',
+                                                            color: star <= (hoveredStar[item.id] || ratings[item.id]) ? '#ff9f00' : '#e0e0e0' 
+                                                        }}
+                                                    >
+                                                        ★
+                                                    </span>
+                                                ))}
+                                            </div>
                                         </div>
                                     </div>
                                 ))}
@@ -271,12 +260,10 @@ const CheckoutModal = ({ isOpen, onClose, cartItems = [], cartTotal, onConfirmOr
 
                             <div style={{ borderBottom: '1px solid #dee2e6', paddingBottom: '15px', marginBottom: '15px' }}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', color: '#555', fontSize: '15px' }}>
-                                    <span>Subtotal</span>
-                                    <span>Rs. {cartTotal}</span>
+                                    <span>Subtotal</span><span>Rs. {cartTotal}</span>
                                 </div>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', color: '#555', fontSize: '15px' }}>
-                                    <span>Shipping</span>
-                                    <span style={{ color: '#28a745', fontWeight: 'bold' }}>FREE</span>
+                                    <span>Shipping</span><span style={{ color: '#28a745', fontWeight: 'bold' }}>FREE</span>
                                 </div>
                             </div>
 
@@ -292,9 +279,6 @@ const CheckoutModal = ({ isOpen, onClose, cartItems = [], cartTotal, onConfirmOr
                             >
                                 {isPlacingOrder ? 'Processing Order...' : `Pay Rs. ${cartTotal}`}
                             </button>
-                            <div style={{ textAlign: 'center', marginTop: '15px', fontSize: '12px', color: '#888' }}>
-                                By placing your order, you agree to our Terms and Privacy Policy.
-                            </div>
                         </div>
                     </div>
                 )}

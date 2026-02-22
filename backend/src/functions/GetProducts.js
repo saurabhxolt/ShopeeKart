@@ -6,13 +6,13 @@ app.http('GetProducts', {
     authLevel: 'anonymous',
     handler: async (request, context) => {
         try {
-            const sellerId = request.query.get('sellerId');
+            const sellerIdParam = request.query.get('sellerId');
+            const parsedSellerId = parseInt(sellerIdParam);
             
             // 1. Connect using your shared connection string
             await sql.connect(process.env.SQL_CONNECTION);
 
             // 2. Query with Security Check (JOIN Sellers)
-            // 🔥 Kept your original aliases (as id, as name) so React doesn't crash!
             let query = `
                 SELECT 
                     p.ProductId as id, 
@@ -31,16 +31,19 @@ app.http('GetProducts', {
                 INNER JOIN Sellers s ON p.SellerId = s.SellerId
                 WHERE p.IsActive = 1 
                   AND s.IsApproved = 1
-                  AND (p.IsArchived = 0 OR p.IsArchived IS NULL) -- 🔥 Hides Admin "Take Down" products
-                  AND (s.IsDeleted = 0 OR s.IsDeleted IS NULL)   -- 🔥 Hides Deleted Seller products
+                  AND (p.IsArchived = 0 OR p.IsArchived IS NULL)
+                  AND (s.IsDeleted = 0 OR s.IsDeleted IS NULL)
             `;
 
-            // 3. Add specific seller filter if requested
-            if (sellerId) {
-                query += ` AND p.SellerId = ${parseInt(sellerId)}`;
+            const dbRequest = new sql.Request();
+
+            // 3. 🔥 FIX: Only add filter if it is a valid number!
+            if (sellerIdParam && !isNaN(parsedSellerId)) {
+                query += ` AND p.SellerId = @sellerId`;
+                dbRequest.input('sellerId', sql.Int, parsedSellerId);
             }
 
-            const result = await sql.query(query);
+            const result = await dbRequest.query(query);
             return { status: 200, jsonBody: result.recordset };
 
         } catch (err) {
