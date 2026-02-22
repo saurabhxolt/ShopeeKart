@@ -14,11 +14,9 @@ app.http('UpdateSellerProfile', {
     handler: async (request, context) => {
         try {
             const body = await request.json();
-            let { userId, storeName, description, supportEmail, supportPhone, pickupAddress, gstin, bankAccount, ifsc, storeLogo, storeBanner } = body;
+            let { userId, storeName, description, supportEmail, supportPhone, pickupAddress, gstin, bankAccount, ifsc, storeLogo, storeBanner, verificationDoc } = body;
 
-            if (!userId) {
-                return { status: 400, body: "Missing userId" };
-            }
+            if (!userId) return { status: 400, body: "Missing userId" };
 
             // --- 1. AZURE BLOB STORAGE LOGIC ---
             const connectionString = process.env.AzureWebJobsStorage;
@@ -26,30 +24,47 @@ app.http('UpdateSellerProfile', {
             const containerClient = blobServiceClient.getContainerClient("seller-images");
             await containerClient.createIfNotExists({ access: 'blob' });
 
-            // Helper to upload Base64 specifically for sellers
             const uploadToBlob = async (base64Str, prefix) => {
-                if (!base64Str || base64Str.startsWith('http')) return base64Str; // Already URL or empty
+                if (!base64Str || base64Str.startsWith('http')) return base64Str; 
                 
-                const matches = base64Str.match(/^data:image\/([A-Za-z-+\/]+);base64,(.+)$/);
+                const matches = base64Str.match(/^data:(.*);base64,(.+)$/);
                 if (!matches || matches.length !== 3) return base64Str;
 
-                const extension = matches[1] === 'jpeg' ? 'jpg' : matches[1];
+                const mimeType = matches[1];
+                // Safely extract extension to handle PDFs vs Images correctly
+                let extension = mimeType.split('/')[1];
+                if (extension === 'jpeg') extension = 'jpg';
+                if (mimeType === 'application/pdf') extension = 'pdf';
+
                 const buffer = Buffer.from(matches[2], 'base64');
                 
                 const blobName = `${Date.now()}-${prefix}-user${userId}.${extension}`;
                 const blockBlobClient = containerClient.getBlockBlobClient(blobName);
 
+                // 🔥 FIX: Added 'inline' disposition to stop IDM from hijacking the link
                 await blockBlobClient.uploadData(buffer, {
-                    blobHTTPHeaders: { blobContentType: `image/${extension}` }
+                    blobHTTPHeaders: { 
+                        blobContentType: mimeType,
+                        blobContentDisposition: 'inline' 
+                    }
                 });
 
                 return blockBlobClient.url;
             };
 
-            // Process the logo and banner (converts Base64 to Azurite URLs)
             storeLogo = await uploadToBlob(storeLogo, 'logo');
             storeBanner = await uploadToBlob(storeBanner, 'banner');
 
+            // --- HANDLE MULTIPLE KYC DOCUMENTS ---
+            let finalKycUrls = [];
+            if (verificationDoc && Array.isArray(verificationDoc)) {
+                for (let i = 0; i < verificationDoc.length; i++) {
+                    const uploadedUrl = await uploadToBlob(verificationDoc[i], `kyc-${i}`);
+                    if (uploadedUrl) finalKycUrls.push(uploadedUrl);
+                }
+            }
+
+            const verificationDocString = JSON.stringify(finalKycUrls);
 
             // --- 2. SQL DATABASE UPDATE ---
             return new Promise((resolve) => {
@@ -60,23 +75,16 @@ app.http('UpdateSellerProfile', {
 
                     const query = `
                         UPDATE Sellers 
-                        SET StoreName = @storeName, 
-                            Description = @description, 
-                            SupportEmail = @supportEmail, 
-                            SupportPhone = @supportPhone, 
-                            PickupAddress = @pickupAddress, 
-                            GSTIN = @gstin, 
-                            BankAccount = @bankAccount, 
-                            IFSC = @ifsc,
-                            StoreLogo = @storeLogo,
-                            StoreBanner = @storeBanner,
-                            IsApproved = 0 
+                        SET StoreName = @storeName, Description = @description, SupportEmail = @supportEmail, 
+                            SupportPhone = @supportPhone, PickupAddress = @pickupAddress, GSTIN = @gstin, 
+                            BankAccount = @bankAccount, IFSC = @ifsc, StoreLogo = @storeLogo,
+                            StoreBanner = @storeBanner, VerificationDoc = @verificationDoc, IsApproved = 0 
                         WHERE UserId = @userId
                     `;
 
                     const req = new Request(query, (err) => {
                         connection.close();
-                        if (err) return resolve({ status: 500, body: "Failed to update profile: " + err.message });
+                        if (err) return resolve({ status: 500, body: "Failed to update profile" });
                         resolve({ status: 200, body: "Profile updated successfully" });
                     });
 
@@ -91,6 +99,7 @@ app.http('UpdateSellerProfile', {
                     req.addParameter('ifsc', TYPES.VarChar, ifsc || null);
                     req.addParameter('storeLogo', TYPES.VarChar, storeLogo || null); 
                     req.addParameter('storeBanner', TYPES.VarChar, storeBanner || null);
+                    req.addParameter('verificationDoc', TYPES.NVarChar, verificationDocString); // Saving JSON array
 
                     connection.execSql(req);
                 });
@@ -99,7 +108,7 @@ app.http('UpdateSellerProfile', {
             });
         } catch (error) {
             context.error("Function Error:", error);
-            return { status: 500, body: "Server Error: " + error.message };
+            return { status: 500, body: "Server Error" };
         }
     }
 });

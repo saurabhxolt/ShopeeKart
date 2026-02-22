@@ -12,7 +12,7 @@ app.http('GetProducts', {
             await sql.connect(process.env.SQL_CONNECTION);
 
             // 2. Query with Security Check (JOIN Sellers)
-            // We only select products where the Seller IsApproved = 1
+            // 🔥 Kept your original aliases (as id, as name) so React doesn't crash!
             let query = `
                 SELECT 
                     p.ProductId as id, 
@@ -29,12 +29,15 @@ app.http('GetProducts', {
                     p.SellerId as sellerId
                 FROM Products p
                 INNER JOIN Sellers s ON p.SellerId = s.SellerId
-                WHERE p.IsActive = 1 AND s.IsApproved = 1
+                WHERE p.IsActive = 1 
+                  AND s.IsApproved = 1
+                  AND (p.IsArchived = 0 OR p.IsArchived IS NULL) -- 🔥 Hides Admin "Take Down" products
+                  AND (s.IsDeleted = 0 OR s.IsDeleted IS NULL)   -- 🔥 Hides Deleted Seller products
             `;
 
             // 3. Add specific seller filter if requested
             if (sellerId) {
-                query += ` AND p.SellerId = ${sellerId}`;
+                query += ` AND p.SellerId = ${parseInt(sellerId)}`;
             }
 
             const result = await sql.query(query);

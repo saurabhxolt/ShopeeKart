@@ -26,9 +26,9 @@ app.http('GetSellerProfile', {
                     return;
                 }
 
-                // 🔥 FIX: Added StoreLogo and StoreBanner to the SELECT statement
+                // 🔥 FIX: Added VerificationDoc
                 const query = `
-                    SELECT StoreName, Description, SupportEmail, SupportPhone, PickupAddress, GSTIN, BankAccount, IFSC, StoreLogo, StoreBanner 
+                    SELECT StoreName, Description, SupportEmail, SupportPhone, PickupAddress, GSTIN, BankAccount, IFSC, StoreLogo, StoreBanner, VerificationDoc 
                     FROM Sellers 
                     WHERE UserId = @userId
                 `;
@@ -53,8 +53,9 @@ app.http('GetSellerProfile', {
                         gstin: columns[5].value || '',
                         bankAccount: columns[6].value || '',
                         ifsc: columns[7].value || '',
-                        storeLogo: columns[8].value || '',      // 🔥 FIX: Now maps the Logo
-                        storeBanner: columns[9].value || ''     // 🔥 FIX: Now maps the Banner
+                        storeLogo: columns[8].value || '',      
+                        storeBanner: columns[9].value || '',    
+                        verificationDoc: columns[10].value || '' // 🔥 FIX: Mapped the Document
                     };
                 });
 

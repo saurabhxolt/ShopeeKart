@@ -69,6 +69,7 @@ app.http('UpdateProduct', {
                 connection.on('connect', (err) => {
                     if (err) return resolve({ status: 500, jsonBody: { error: "DB Connection Error: " + err.message } });
 
+                    // 🔥 UPDATED QUERY: Automatically sets FixSubmitted to 1 if the product is currently archived
                     const query = `
                         UPDATE Products 
                         SET Name = @name, 
@@ -81,7 +82,8 @@ app.http('UpdateProduct', {
                             Brand = @brand,
                             Weight = @weight,
                             SKU = @sku,
-                            IsActive = @active
+                            IsActive = @active,
+                            FixSubmitted = CASE WHEN IsArchived = 1 THEN 1 ELSE FixSubmitted END
                         WHERE ProductId = @pid
                     `;
 
@@ -110,7 +112,6 @@ app.http('UpdateProduct', {
             });
 
         } catch (error) {
-            // 🔥 FIXED: Updated from context.log.error to context.error for Azure Functions v4
             context.error("Function Error:", error);
             return { status: 500, jsonBody: { error: "Server Error: " + error.message } };
         }
