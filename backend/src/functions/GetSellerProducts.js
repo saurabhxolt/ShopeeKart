@@ -21,25 +21,19 @@ app.http('GetSellerProducts', {
 
                 let foundSellerId = null;
 
-                // 1. Find Seller ID
                 const findSellerQuery = `SELECT SellerId FROM Sellers WHERE UserId = @uid`;
                 const reqSeller = new Request(findSellerQuery, (err) => {
-                    if (err) {
+                    if (err || !foundSellerId) {
                         connection.close();
-                        return resolve({ status: 500, body: "Seller Lookup Error" });
-                    }
-                    
-                    if (!foundSellerId) {
-                        connection.close();
-                        return resolve({ status: 200, jsonBody: [] }); 
+                        return resolve({ status: err ? 500 : 200, jsonBody: [] }); 
                     }
 
-                    // 2. Get Products (NOW FETCHING ALL NEW COLUMNS)
                     const products = [];
+                    // 🔥 UPDATED: Added IsArchived and AdminMessage with correct commas
                     const prodQuery = `
                         SELECT 
                             ProductId, Name, Price, Stock, ImageUrl, 
-                            Description, OriginalPrice, Category, Brand, Weight, SKU, IsActive 
+                            Description, OriginalPrice, Category, Brand, Weight, SKU, IsActive, IsArchived, AdminMessage 
                         FROM Products 
                         WHERE SellerId = ${foundSellerId}
                     `;
@@ -50,7 +44,6 @@ app.http('GetSellerProducts', {
                         resolve({ status: 200, jsonBody: products });
                     });
 
-                    // Map the new columns to the JSON response
                     reqProd.on('row', (columns) => {
                         products.push({
                             id: columns[0].value,
@@ -58,14 +51,15 @@ app.http('GetSellerProducts', {
                             price: columns[2].value,
                             qty: columns[3].value,
                             imageUrl: columns[4].value,
-                            // New Fields
                             description: columns[5].value,
                             originalPrice: columns[6].value,
                             category: columns[7].value,
                             brand: columns[8].value,
                             weight: columns[9].value,
                             sku: columns[10].value,
-                            isActive: columns[11].value
+                            isActive: columns[11].value,
+                            isArchived: columns[12].value,   // 🔥 Mapped
+                            adminMessage: columns[13].value // 🔥 Mapped
                         });
                     });
 

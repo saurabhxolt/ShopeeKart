@@ -204,7 +204,6 @@ const SellerDashboard = ({ user }) => {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
           <h2>🏪 Seller Dashboard</h2>
           
-          {/* 🔥 NEW: Added the Store Settings Button to the action bar */}
           <div style={{ display: 'flex', gap: '10px' }}>
             <button onClick={() => setIsProfileModalOpen(true)} style={{ backgroundColor: '#6c757d', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>
                 ⚙️ Store Settings
@@ -266,19 +265,21 @@ const SellerDashboard = ({ user }) => {
         ) : (
             filteredProducts.map((p, i) => (
             <div key={i} style={{ 
-                border: '1px solid #ccc', padding: 15, borderRadius: 12, width: 320, background: 'white', 
+                border: p.isArchived ? '2px solid #dc3545' : '1px solid #ccc', padding: 15, borderRadius: 12, width: 320, background: p.isArchived ? '#fff5f5' : 'white', 
                 boxShadow: '0 2px 5px rgba(0,0,0,0.1)', position: 'relative', 
                 opacity: (p.qty <= 0 || p.isActive === false) ? 0.6 : 1, 
                 transition: 'all 0.3s ease' 
             }}>
                 
-                {p.qty <= 0 && (
+                {p.isArchived ? (
+                    <div style={{ position: 'absolute', top: '20px', right: '20px', background: '#dc3545', color: 'white', padding: '6px 12px', borderRadius: '4px', fontWeight: 'bold', fontSize: '11px', zIndex: 10, letterSpacing: '0.5px', boxShadow: '0 2px 4px rgba(0,0,0,0.2)', border: '2px solid white' }}>
+                        🚫 TAKEN DOWN BY ADMIN
+                    </div>
+                ) : p.qty <= 0 ? (
                     <div style={{ position: 'absolute', top: '25px', left: '25px', background: '#dc3545', color: 'white', padding: '6px 12px', borderRadius: '4px', fontWeight: 'bold', fontSize: '12px', zIndex: 10, letterSpacing: '1px', boxShadow: '0 2px 4px rgba(0,0,0,0.2)' }}>
                         OUT OF STOCK
                     </div>
-                )}
-
-                {p.isActive === false && (
+                ) : p.isActive === false && (
                     <div style={{ position: 'absolute', top: '25px', right: '25px', background: '#6c757d', color: 'white', padding: '6px 12px', borderRadius: '4px', fontWeight: 'bold', fontSize: '12px', zIndex: 10, letterSpacing: '1px', boxShadow: '0 2px 4px rgba(0,0,0,0.2)' }}>
                         DRAFT (HIDDEN)
                     </div>
@@ -356,16 +357,39 @@ const SellerDashboard = ({ user }) => {
                         <div style={{ maxHeight: '75px', overflowY: 'auto', wordBreak: 'break-word', paddingRight: '5px', marginBottom: '10px', fontSize: '13px', color: '#555' }}>
                             <ReadMore text={p.description} limit={60} />
                         </div>
-
                     </div>
+
+                    {/* MODERATION ALERT BOX - ALWAYS SHOW IF ARCHIVED */}
+                    {p.isArchived && (
+                        <div style={{ padding: '12px', background: '#ffeeba', color: '#856404', borderRadius: '6px', fontSize: '13px', fontWeight: 'bold', border: '1px solid #ffe8a1', marginTop: '10px', marginBottom: '10px', lineHeight: '1.4' }}>
+                            ⚠️ Moderation Alert<br/>
+                            <span style={{ fontWeight: 'normal', color: '#666' }}>
+                                {p.adminMessage ? `Reason: ${p.adminMessage}` : 'This product violates platform policies and has been taken down.'}
+                            </span>
+                        </div>
+                    )}
                     
                     <div style={{ display: 'flex', gap: '5px', marginTop: '5px' }}>
+                        {/* THE VISIBILITY BUTTON IS DISABLED IF ARCHIVED */}
                         <button 
+                            disabled={p.isArchived}
                             onClick={() => handleToggleVisibility(p)} 
-                            style={{ flex: 1, background: p.isActive === false ? '#28a745' : '#6c757d', color: 'white', border: 'none', padding: '8px', borderRadius: 4, cursor: 'pointer', fontWeight: 'bold', fontSize: '12px' }}
+                            style={{ 
+                                flex: 1, 
+                                background: p.isArchived ? '#ccc' : (p.isActive === false ? '#28a745' : '#6c757d'), 
+                                color: 'white', 
+                                border: 'none', 
+                                padding: '8px', 
+                                borderRadius: 4, 
+                                cursor: p.isArchived ? 'not-allowed' : 'pointer', 
+                                fontWeight: 'bold', 
+                                fontSize: '12px' 
+                            }}
                         >
-                            {p.isActive === false ? '✅ Set Active' : '👁️ Hide / Draft'}
+                            {p.isArchived ? '🚫 Locked' : (p.isActive === false ? '✅ Set Active' : '👁️ Hide / Draft')}
                         </button>
+
+                        {/* EDIT AND DELETE REMAIN AVAILABLE SO THEY CAN FIX ISSUES */}
                         <button onClick={() => setEditingProduct(p)} style={{ flex: 1, background: '#ffc107', border: 'none', padding: '8px', borderRadius: 4, cursor: 'pointer', fontWeight: 'bold', fontSize: '12px' }}>Edit</button>
                         <button onClick={() => handleDeleteProduct(p.id)} style={{ flex: 1, color: 'red', border: '1px solid red', padding: '8px', borderRadius: 4, background: 'white', cursor: 'pointer', fontSize: '12px' }}>Delete</button>
                     </div>
@@ -376,21 +400,8 @@ const SellerDashboard = ({ user }) => {
         )}
       </div>
 
-      {/* 🔥 NEW: Added the Seller Profile Modal below */}
-      <SellerProfileModal 
-          isOpen={isProfileModalOpen} 
-          onClose={() => setIsProfileModalOpen(false)} 
-          userId={user.userId} 
-      />
-
-      <SellerOrdersModal 
-          isOpen={isOrdersModalOpen} 
-          onClose={() => {
-              setIsOrdersModalOpen(false);
-              loadDashboardData(); 
-          }} 
-          sellerId={user.userId} 
-      />
+      <SellerProfileModal isOpen={isProfileModalOpen} onClose={() => setIsProfileModalOpen(false)} userId={user.userId} />
+      <SellerOrdersModal isOpen={isOrdersModalOpen} onClose={() => { setIsOrdersModalOpen(false); loadDashboardData(); }} sellerId={user.userId} />
 
       <Modal isOpen={isAddModalOpen} onClose={() => setIsAddModalOpen(false)} title="Upload New Product">
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
