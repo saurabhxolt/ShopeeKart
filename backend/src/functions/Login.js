@@ -13,11 +13,14 @@ app.http('Login', {
             await sql.connect(process.env.SQL_CONNECTION);
             
             // 2. Query User (Checking Role, Ban Status, and Soft Delete)
+            // 🔥 UPDATED: Added u.Email and u.Phone to the SELECT statement
             const result = await sql.query`
                 SELECT 
                     u.UserId, 
                     u.Role, 
-                    u.FullName, 
+                    u.FullName,
+                    u.Email,
+                    u.Phone,
                     u.PasswordHash, 
                     u.IsBanned, 
                     s.IsApproved
@@ -55,12 +58,15 @@ app.http('Login', {
             }
 
             // 6. Success - Return User Data
+            // 🔥 UPDATED: Now returning email and phone to the frontend
             return {
                 status: 200,
                 jsonBody: {
                     userId: user.UserId,
                     role: user.Role,
                     name: user.FullName,
+                    email: user.Email,
+                    phone: user.Phone,
                     token: "dummy-jwt-token" 
                 }
             };

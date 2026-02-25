@@ -15,7 +15,7 @@ app.http('PlaceOrder', {
 
             // 2. Parse Input
             const body = await request.json();
-            const { userId, address, cartItems, totalAmount } = body;
+            const { userId, address, cartItems, totalAmount, isBuyNow } = body;
 
             if (!userId || !cartItems || cartItems.length === 0) {
                 return { status: 400, body: "Invalid Order Data" };
@@ -25,17 +25,13 @@ app.http('PlaceOrder', {
             await sql.connect(connectionString);
             
             // --- SECURITY CHECK: IS SELLER BANNED? ---
-            // We check the seller of the first item (since carts are single-seller)
             const sellerIdToCheck = cartItems[0].sellerId;
             
-            // If the frontend didn't send sellerId, we might need to fetch it from a product, 
-            // but assuming your addToCart logic works, it should be there.
             if (sellerIdToCheck) {
                 const sellerCheck = await sql.query(`
                     SELECT IsApproved FROM Sellers WHERE SellerId = ${sellerIdToCheck}
                 `);
 
-                // If seller not found OR IsApproved is false
                 if (sellerCheck.recordset.length === 0 || !sellerCheck.recordset[0].IsApproved) {
                     return { 
                         status: 403, 
@@ -73,22 +69,32 @@ app.http('PlaceOrder', {
                         .input('Qty', sql.Int, item.qty || 1)
                         .input('Price', sql.Decimal(18, 2), item.price)
                         .query(`
-                            INSERT INTO OrderItems (OrderId, ProductId, SellerId, Qty, Price)
-                            VALUES (@OrderId, @ProductId, @SellerId, @Qty, @Price);
-
+                            -- 🔥 FINAL BACKEND VERIFICATION: Only update if enough stock exists
                             UPDATE Products 
                             SET Stock = Stock - @Qty 
-                            WHERE ProductId = @ProductId;
+                            WHERE ProductId = @ProductId AND Stock >= @Qty;
+
+                            -- If no rows were updated, it means stock was too low!
+                            IF @@ROWCOUNT = 0
+                            BEGIN
+                                THROW 51000, 'Out of stock! Someone just bought the last unit of an item in your cart.', 1;
+                            END
+
+                            -- Only insert order item if the stock update was successful
+                            INSERT INTO OrderItems (OrderId, ProductId, SellerId, Qty, Price)
+                            VALUES (@OrderId, @ProductId, @SellerId, @Qty, @Price);
                         `);
                 }
 
-                // C. Clear Cart
-                const clearCartRequest = new sql.Request(transaction);
-                await clearCartRequest.input('UserId', sql.Int, userId)
-                    .query(`
-                        DELETE FROM CartItems 
-                        WHERE CartId IN (SELECT CartId FROM Carts WHERE UserId = @UserId)
-                    `);
+                // C. Clear Cart (ONLY IF NOT BUY NOW)
+             if (!isBuyNow) {
+                 const clearCartRequest = new sql.Request(transaction);
+                 await clearCartRequest.input('UserId', sql.Int, userId)
+                     .query(`
+                         DELETE FROM CartItems 
+                         WHERE CartId IN (SELECT CartId FROM Carts WHERE UserId = @UserId)
+                     `);
+             }
 
                 await transaction.commit();
 
@@ -98,6 +104,7 @@ app.http('PlaceOrder', {
                 };
 
             } catch (err) {
+                // If the stock check THROWs an error, it gets caught here and reverses the whole order
                 await transaction.rollback();
                 throw err;
             }

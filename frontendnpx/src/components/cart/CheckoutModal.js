@@ -12,7 +12,14 @@ const INDIAN_STATES = [
     "Tripura", "Uttar Pradesh", "Uttarakhand", "West Bengal"
 ];
 
-const CheckoutModal = ({ isOpen, onClose, cartItems = [], cartTotal, onConfirmOrder }) => {
+// 🔥 EXTENSION: Added onViewOrders prop
+const CheckoutModal = ({ isOpen, onClose, cartItems = [], cartTotal, onConfirmOrder, userId, onViewOrders }) => {
+    
+    // States for handling saved addresses
+    const [savedAddresses, setSavedAddresses] = useState([]);
+    const [selectedAddressId, setSelectedAddressId] = useState('NEW');
+    const [isLoadingAddresses, setIsLoadingAddresses] = useState(false);
+
     const [formData, setFormData] = useState({
         fullName: '', phone: '', addressLine: '', pincode: '', city: '', district: '', state: ''
     });
@@ -20,12 +27,21 @@ const CheckoutModal = ({ isOpen, onClose, cartItems = [], cartTotal, onConfirmOr
     const [paymentMethod, setPaymentMethod] = useState('COD');
     const [isPlacingOrder, setIsPlacingOrder] = useState(false);
     const [isFetchingPin, setIsFetchingPin] = useState(false);
+    
+    // 🔥 NEW: orderId now triggers the Success View
     const [orderId, setOrderId] = useState(null);
     const [error, setError] = useState('');
 
-    // 🔥 NEW: States to handle ratings in the checkout modal
+    // States to handle ratings in the checkout modal
     const [ratings, setRatings] = useState({});
     const [hoveredStar, setHoveredStar] = useState({});
+
+    // 🔥 NEW: Payment Options Array
+    const paymentOptions = [
+        { id: 'UPI', label: 'UPI / QR', desc: 'Google Pay, PhonePe, Paytm' },
+        { id: 'CARD', label: 'Credit / Debit / ATM Card', desc: 'All major cards supported' },
+        { id: 'COD', label: 'Cash on Delivery (COD)', desc: 'Pay securely in cash when your order arrives.' }
+    ];
 
     useEffect(() => {
         if (isOpen) {
@@ -35,13 +51,31 @@ const CheckoutModal = ({ isOpen, onClose, cartItems = [], cartTotal, onConfirmOr
             setError('');
             setIsPlacingOrder(false);
             setIsFetchingPin(false);
+            setSelectedAddressId('NEW'); // Reset selection
             
-            // 🔥 NEW: Initialize all cart items to a default 5-star rating
+            // Initialize all cart items to a default 5-star rating
             const initRatings = {};
             cartItems.forEach(item => initRatings[item.id] = 5);
             setRatings(initRatings);
+
+            if (userId) fetchAddresses();
         }
-    }, [isOpen, cartItems]);
+    }, [isOpen, cartItems, userId]);
+
+    const fetchAddresses = async () => {
+        setIsLoadingAddresses(true);
+        try {
+            const res = await axios.get(`http://localhost:7071/api/GetAddresses?userId=${userId}`);
+            setSavedAddresses(res.data);
+            if (res.data.length > 0) {
+                setSelectedAddressId(res.data[0].AddressId); // Auto-select the first saved address
+            }
+        } catch (err) {
+            console.error("Failed to fetch addresses", err);
+        } finally {
+            setIsLoadingAddresses(false);
+        }
+    };
 
     if (!isOpen) return null;
 
@@ -90,22 +124,30 @@ const CheckoutModal = ({ isOpen, onClose, cartItems = [], cartTotal, onConfirmOr
     };
 
     const handleSubmit = async () => {
-        if (!formData.fullName || !formData.phone || !formData.addressLine || !formData.pincode || !formData.city || !formData.state) {
-            return setError("Please fill in all required address fields.");
-        }
+        let formattedAddress = "";
 
-        if (formData.phone.length !== 10) {
-            return setError("Please enter a valid 10-digit mobile number.");
+        if (selectedAddressId === 'NEW') {
+            if (!formData.fullName || !formData.phone || !formData.addressLine || !formData.pincode || !formData.city || !formData.state) {
+                return setError("Please fill in all required address fields.");
+            }
+            if (formData.phone.length !== 10) {
+                return setError("Please enter a valid 10-digit mobile number.");
+            }
+            formattedAddress = `${formData.fullName} | Ph: +91 ${formData.phone}\n${formData.addressLine}\n${formData.city}, Dist: ${formData.district}, ${formData.state} - ${formData.pincode}\nPayment: ${paymentMethod}`;
+        } else {
+            const addr = savedAddresses.find(a => a.AddressId === selectedAddressId);
+            if (!addr) return setError("Please select a valid address.");
+            formattedAddress = `${addr.FullName} | Ph: +91 ${addr.Phone}\n${addr.AddressLine}\n${addr.City}, Dist: ${addr.District}, ${addr.State} - ${addr.Pincode}\nPayment: ${paymentMethod}`;
         }
         
         setError('');
         setIsPlacingOrder(true);
-        
-        const formattedAddress = `${formData.fullName} | Ph: +91 ${formData.phone}\n${formData.addressLine}\n${formData.city}, Dist: ${formData.district}, ${formData.state} - ${formData.pincode}\nPayment: ${paymentMethod}`;
 
         try {
-            // 🔥 NEW: Pass BOTH the address AND the ratings object back to App.js
+            // Pass BOTH the address AND the ratings object back to App.js
             const newOrderId = await onConfirmOrder(formattedAddress, ratings);
+            
+            // 🔥 NEW: Trigger Success View instead of closing
             setOrderId(newOrderId); 
         } catch (err) {
             setError(err.message || "Failed to place order. Please try again.");
@@ -122,7 +164,7 @@ const CheckoutModal = ({ isOpen, onClose, cartItems = [], cartTotal, onConfirmOr
                     <button onClick={onClose} style={{ position: 'absolute', top: '15px', right: '20px', background: 'none', border: 'none', fontSize: '28px', cursor: 'pointer', color: '#555', zIndex: 10 }}>&times;</button>
                 )}
 
-                {/* --- SUCCESS STATE --- */}
+                {/* --- 🔥 NEW: SUCCESS STATE VIEW --- */}
                 {orderId ? (
                     <div style={{ textAlign: 'center', padding: '50px 20px' }}>
                         <div style={{ fontSize: '70px', marginBottom: '15px', animation: 'bounce 0.5s ease' }}>🎉</div>
@@ -144,7 +186,7 @@ const CheckoutModal = ({ isOpen, onClose, cartItems = [], cartTotal, onConfirmOr
                             <button onClick={onClose} style={{ padding: '12px 25px', border: '1px solid #007bff', background: 'white', color: '#007bff', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', fontSize: '15px', transition: 'all 0.2s' }}>
                                 Continue Shopping
                             </button>
-                            <button onClick={() => { onClose(); alert("Opening My Orders..."); }} style={{ padding: '12px 25px', border: 'none', background: '#007bff', color: 'white', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', fontSize: '15px', boxShadow: '0 4px 6px rgba(0, 123, 255, 0.2)' }}>
+                            <button onClick={() => onViewOrders && onViewOrders()} style={{ padding: '12px 25px', border: 'none', background: '#007bff', color: 'white', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', fontSize: '15px', boxShadow: '0 4px 6px rgba(0, 123, 255, 0.2)' }}>
                                 Track My Order
                             </button>
                         </div>
@@ -165,55 +207,108 @@ const CheckoutModal = ({ isOpen, onClose, cartItems = [], cartTotal, onConfirmOr
                             )}
 
                             <h4 style={{ color: '#555', marginBottom: '15px' }}>1. Shipping Address</h4>
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginBottom: '15px' }}>
-                                <div>
-                                    <label style={labelStyle}>Full Name *</label>
-                                    <input type="text" name="fullName" value={formData.fullName} onChange={handleInputChange} style={inputStyle} placeholder="John Doe" />
-                                </div>
-                                <div>
-                                    <label style={labelStyle}>Mobile Number *</label>
-                                    <input type="tel" name="phone" value={formData.phone} onChange={handleInputChange} style={{...inputStyle, borderColor: formData.phone && formData.phone.length < 10 ? '#ffc107' : '#ccc'}} placeholder="10-digit number" />
-                                </div>
-                            </div>
                             
-                            <div style={{ marginBottom: '15px' }}>
-                                <label style={labelStyle}>Street Address *</label>
-                                <input type="text" name="addressLine" value={formData.addressLine} onChange={handleInputChange} style={inputStyle} placeholder="House/Flat No., Building Name, Street" />
-                            </div>
+                            {isLoadingAddresses ? (
+                                <div style={{ padding: '20px', textAlign: 'center', color: '#888' }}>Loading saved addresses...</div>
+                            ) : (
+                                <div style={{ marginBottom: '20px' }}>
+                                    {savedAddresses.map(addr => (
+                                        <div 
+                                            key={addr.AddressId} 
+                                            onClick={() => setSelectedAddressId(addr.AddressId)}
+                                            style={{ 
+                                                border: selectedAddressId === addr.AddressId ? '2px solid #2874f0' : '1px solid #e0e0e0', 
+                                                borderRadius: '6px', padding: '15px', marginBottom: '10px', cursor: 'pointer', 
+                                                background: selectedAddressId === addr.AddressId ? '#f0f5ff' : 'white',
+                                                transition: 'all 0.2s ease'
+                                            }}
+                                        >
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                                <input type="radio" checked={selectedAddressId === addr.AddressId} readOnly style={{ accentColor: '#2874f0', width: '16px', height: '16px' }} />
+                                                <span style={{ fontWeight: 'bold', fontSize: '15px', color: '#333' }}>{addr.FullName}</span>
+                                                <span style={{ background: '#e0e0e0', padding: '2px 8px', borderRadius: '4px', fontSize: '10px', fontWeight: 'bold' }}>HOME</span>
+                                            </div>
+                                            <div style={{ marginLeft: '26px', fontSize: '14px', color: '#555', marginTop: '6px', lineHeight: '1.5' }}>
+                                                {addr.AddressLine}, {addr.City}, {addr.State} - <strong>{addr.Pincode}</strong>
+                                                <br/>Mobile: <strong>{addr.Phone}</strong>
+                                            </div>
+                                        </div>
+                                    ))}
 
-                            <div style={{ marginBottom: '15px', position: 'relative' }}>
-                                <label style={labelStyle}>PIN Code *</label>
-                                <input type="text" name="pincode" value={formData.pincode} onChange={handleInputChange} style={{...inputStyle, width: '50%'}} placeholder="560001" />
-                                {isFetchingPin && <span style={{ position: 'absolute', left: '53%', top: '38px', fontSize: '12px', color: '#007bff', fontWeight: 'bold' }}>⏳ Fetching location...</span>}
-                            </div>
+                                    {/* Add New Address Option */}
+                                    <div 
+                                        onClick={() => setSelectedAddressId('NEW')}
+                                        style={{ 
+                                            border: selectedAddressId === 'NEW' ? '2px solid #2874f0' : '1px solid #e0e0e0', 
+                                            borderRadius: '6px', padding: '15px', cursor: 'pointer', 
+                                            background: selectedAddressId === 'NEW' ? '#f0f5ff' : 'white', 
+                                            display: 'flex', alignItems: 'center', gap: '10px',
+                                            transition: 'all 0.2s ease',
+                                            marginBottom: selectedAddressId === 'NEW' ? '15px' : '0'
+                                        }}
+                                    >
+                                        <input type="radio" checked={selectedAddressId === 'NEW'} readOnly style={{ accentColor: '#2874f0', width: '16px', height: '16px' }} />
+                                        <span style={{ fontWeight: 'bold', color: selectedAddressId === 'NEW' ? '#2874f0' : '#333', fontSize: '15px' }}>+ Add a New Address</span>
+                                    </div>
+                                </div>
+                            )}
 
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1.2fr', gap: '15px', marginBottom: '30px' }}>
-                                <div>
-                                    <label style={labelStyle}>City/Block *</label>
-                                    <input type="text" name="city" value={formData.city} onChange={handleInputChange} style={inputStyle} placeholder="Bengaluru" />
-                                </div>
-                                <div>
-                                    <label style={labelStyle}>District</label>
-                                    <input type="text" name="district" value={formData.district} onChange={handleInputChange} style={inputStyle} placeholder="Bengaluru Urban" />
-                                </div>
-                                <div>
-                                    <label style={labelStyle}>State *</label>
-                                    <select name="state" value={formData.state} onChange={handleInputChange} style={{...inputStyle, cursor: 'pointer', backgroundColor: 'white', padding: '11px'}}>
-                                        <option value="" disabled>Select State</option>
-                                        {INDIAN_STATES.map(state => <option key={state} value={state}>{state}</option>)}
-                                    </select>
-                                </div>
-                            </div>
+                            {selectedAddressId === 'NEW' && (
+                                <div style={{ background: '#f9f9f9', padding: '20px', borderRadius: '8px', border: '1px solid #eee' }}>
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginBottom: '15px' }}>
+                                        <div>
+                                            <label style={labelStyle}>Full Name *</label>
+                                            <input type="text" name="fullName" value={formData.fullName} onChange={handleInputChange} style={inputStyle} placeholder="John Doe" />
+                                        </div>
+                                        <div>
+                                            <label style={labelStyle}>Mobile Number *</label>
+                                            <input type="tel" name="phone" value={formData.phone} onChange={handleInputChange} style={{...inputStyle, borderColor: formData.phone && formData.phone.length < 10 ? '#ffc107' : '#ccc'}} placeholder="10-digit number" />
+                                        </div>
+                                    </div>
+                                    
+                                    <div style={{ marginBottom: '15px' }}>
+                                        <label style={labelStyle}>Street Address *</label>
+                                        <input type="text" name="addressLine" value={formData.addressLine} onChange={handleInputChange} style={inputStyle} placeholder="House/Flat No., Building Name, Street" />
+                                    </div>
 
+                                    <div style={{ marginBottom: '15px', position: 'relative' }}>
+                                        <label style={labelStyle}>PIN Code *</label>
+                                        <input type="text" name="pincode" value={formData.pincode} onChange={handleInputChange} style={{...inputStyle, width: '50%'}} placeholder="560001" />
+                                        {isFetchingPin && <span style={{ position: 'absolute', left: '53%', top: '38px', fontSize: '12px', color: '#007bff', fontWeight: 'bold' }}>⏳ Fetching location...</span>}
+                                    </div>
+
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1.2fr', gap: '15px', marginBottom: '30px' }}>
+                                        <div>
+                                            <label style={labelStyle}>City/Block *</label>
+                                            <input type="text" name="city" value={formData.city} onChange={handleInputChange} style={inputStyle} placeholder="Bengaluru" />
+                                        </div>
+                                        <div>
+                                            <label style={labelStyle}>District</label>
+                                            <input type="text" name="district" value={formData.district} onChange={handleInputChange} style={inputStyle} placeholder="Bengaluru Urban" />
+                                        </div>
+                                        <div>
+                                            <label style={labelStyle}>State *</label>
+                                            <select name="state" value={formData.state} onChange={handleInputChange} style={{...inputStyle, cursor: 'pointer', backgroundColor: 'white', padding: '11px'}}>
+                                                <option value="" disabled>Select State</option>
+                                                {INDIAN_STATES.map(state => <option key={state} value={state}>{state}</option>)}
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* 🔥 NEW: PAYMENT OPTIONS */}
                             <h4 style={{ color: '#555', marginBottom: '15px', borderTop: '1px solid #eee', paddingTop: '20px' }}>2. Payment Method</h4>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                                <label style={{ border: `1px solid ${paymentMethod === 'COD' ? '#28a745' : '#ccc'}`, borderRadius: '8px', padding: '15px', background: paymentMethod === 'COD' ? '#f8fff9' : '#fff', display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', transition: 'all 0.2s' }}>
-                                    <input type="radio" name="payment" value="COD" checked={paymentMethod === 'COD'} onChange={(e) => setPaymentMethod(e.target.value)} style={{ accentColor: '#28a745', width: '18px', height: '18px', cursor: 'pointer' }} />
-                                    <div>
-                                        <strong style={{ display: 'block', color: '#333' }}>Cash on Delivery (COD)</strong>
-                                        <span style={{ fontSize: '12px', color: '#666' }}>Pay securely in cash when your order arrives.</span>
-                                    </div>
-                                </label>
+                                {paymentOptions.map(opt => (
+                                    <label key={opt.id} style={{ border: `1px solid ${paymentMethod === opt.id ? '#28a745' : '#ccc'}`, borderRadius: '8px', padding: '15px', background: paymentMethod === opt.id ? '#f8fff9' : '#fff', display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', transition: 'all 0.2s' }}>
+                                        <input type="radio" name="payment" value={opt.id} checked={paymentMethod === opt.id} onChange={(e) => setPaymentMethod(e.target.value)} style={{ accentColor: '#28a745', width: '18px', height: '18px', cursor: 'pointer' }} />
+                                        <div>
+                                            <strong style={{ display: 'block', color: '#333' }}>{opt.label}</strong>
+                                            <span style={{ fontSize: '12px', color: '#666' }}>{opt.desc}</span>
+                                        </div>
+                                    </label>
+                                ))}
                             </div>
                         </div>
 
@@ -234,7 +329,6 @@ const CheckoutModal = ({ isOpen, onClose, cartItems = [], cartTotal, onConfirmOr
                                             </div>
                                         </div>
                                         
-                                        {/* 🔥 THE NEW RATING UI */}
                                         <div style={{ borderTop: '1px dashed #eee', paddingTop: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                             <span style={{ fontSize: '12px', color: '#666', fontWeight: 'bold' }}>Rate Item:</span>
                                             <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>

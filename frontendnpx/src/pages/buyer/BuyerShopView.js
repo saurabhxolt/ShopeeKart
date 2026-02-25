@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 
-const BuyerShopView = ({ user, selectedSeller, onBack, addToCart, refreshKey }) => {
+const BuyerShopView = ({ user, selectedSeller, onBack, addToCart, refreshKey,targetProductId }) => {
   const [products, setProducts] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
@@ -9,18 +9,20 @@ const BuyerShopView = ({ user, selectedSeller, onBack, addToCart, refreshKey }) 
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
 
-  // 🔥 NEW: State for Seller Profile Modal
+  // State for Seller Profile Modal
   const [showSellerProfile, setShowSellerProfile] = useState(false);
 
   const [avgRating, setAvgRating] = useState("0.0");
   const [totalRatings, setTotalRatings] = useState(0);
+
+  // 🔥 NEW: Wishlist State
+  const [wishlistIds, setWishlistIds] = useState([]);
 
   const shopData = (selectedSeller && typeof selectedSeller.id === 'object') ? selectedSeller.id : selectedSeller || {};
   const sellerId = shopData.SellerId || shopData.id;
   const storeName = shopData.StoreName || shopData.name || "Unnamed Shop";
   const storeBanner = shopData.StoreBanner || shopData.banner;
   const storeLogo = shopData.StoreLogo || shopData.logo;
-  // Extract description for the modal
   const storeDesc = shopData.StoreDescription || shopData.Description || shopData.description;
 
   useEffect(() => {
@@ -31,17 +33,87 @@ const BuyerShopView = ({ user, selectedSeller, onBack, addToCart, refreshKey }) 
     }
   }, [sellerId, refreshKey]);
 
+  // 🔥 NEW: Fetch user's wishlist when component mounts
+  // 🔥 FIX: Re-sync wishlist from DB every time the user or shop changes
   useEffect(() => {
-    if (selectedProduct) fetchRating();
-  }, [selectedProduct]);
+    const syncWishlist = async () => {
+        if (user?.userId) {
+            try {
+                // Add a timestamp to prevent browser caching of the GET request
+                const res = await axios.get(`http://localhost:7071/api/GetWishlist?userId=${user.userId}&t=${Date.now()}`);
+                
+                // 🔥 Ensure we extract the ID correctly regardless of casing
+                const ids = res.data.map(item => item.id || item.ProductId);
+                console.log("Wishlist IDs synced from DB:", ids);
+                setWishlistIds(ids);
+            } catch (err) {
+                console.error("Wishlist Sync Error:", err);
+            }
+        }
+    };
 
-  const fetchRating = async () => {
+    syncWishlist();
+  }, [user?.userId, refreshKey]); // Sync whenever user changes or shop refreshes
+
+  useEffect(() => {
+      // 1. Define the function INSIDE the effect
+      const fetchRating = async () => {
+          try {
+              const res = await axios.get(`http://localhost:7071/api/GetProductRating?productId=${selectedProduct.id}`);
+              setAvgRating(res.data.avgRating);
+              setTotalRatings(res.data.totalRatings);
+          } catch (err) {
+              console.error("Failed to load rating", err);
+          }
+      };
+
+      // 2. Call it if a product is selected
+      if (selectedProduct) {
+          fetchRating();
+      }
+  }, [selectedProduct]); // 3. Now selectedProduct is the only dependency needed!
+
+  // 🔥 UPGRADED: Auto-open the exact product with safe Number() casting
+  useEffect(() => {
+      if (targetProductId && products.length > 0) {
+          // Convert both sides to Number to guarantee a match!
+          const productToOpen = products.find(p => 
+              Number(p.id) === Number(targetProductId) || 
+              Number(p.ProductId) === Number(targetProductId)
+          );
+          
+          if (productToOpen) {
+              setSelectedProduct(productToOpen);
+              setActiveImageIndex(0);
+          } else {
+              console.warn(`Could not find product ID ${targetProductId} in this shop.`);
+          }
+      }
+  }, [targetProductId, products]);
+
+  // 🔥 NEW: Toggle Wishlist Function (Optimistic UI Update)
+  const handleWishlistToggle = async (e, productId) => {
+      e.stopPropagation(); // Prevents opening the product detail modal
+      
+      const isCurrentlyWishlisted = wishlistIds.includes(productId);
+      
+      // Update UI instantly
+      if (isCurrentlyWishlisted) {
+          setWishlistIds(prev => prev.filter(id => id !== productId));
+      } else {
+          setWishlistIds(prev => [...prev, productId]);
+      }
+
       try {
-          const res = await axios.get(`http://localhost:7071/api/GetProductRating?productId=${selectedProduct.id}`);
-          setAvgRating(res.data.avgRating);
-          setTotalRatings(res.data.totalRatings);
+          await axios.post('http://localhost:7071/api/ToggleWishlist', {
+              userId: user.userId,
+              productId: productId
+          });
       } catch (err) {
-          console.error("Failed to load rating", err);
+          alert("Failed to update wishlist.");
+          // Revert if API fails
+          if (isCurrentlyWishlisted) setWishlistIds(prev => [...prev, productId]);
+          else setWishlistIds(prev => prev.filter(id => id !== productId));
       }
   };
 
@@ -68,7 +140,6 @@ const BuyerShopView = ({ user, selectedSeller, onBack, addToCart, refreshKey }) 
   // RENDER HELPERS
   // ============================================================================
   
-  // The popup modal showing seller details
   const renderSellerProfileModal = () => {
       if (!showSellerProfile) return null;
       return (
@@ -107,7 +178,6 @@ const BuyerShopView = ({ user, selectedSeller, onBack, addToCart, refreshKey }) 
       );
   };
 
-
   // ============================================================================
   // VIEW 1: PRODUCT DETAIL PAGE 
   // ============================================================================
@@ -134,7 +204,16 @@ const BuyerShopView = ({ user, selectedSeller, onBack, addToCart, refreshKey }) 
                             </div>
                         ))}
                     </div>
-                    <div style={{ flex: 1, border: '1px solid #f0f0f0', display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '10px', height: '600px' }}>
+                    <div style={{ flex: 1, border: '1px solid #f0f0f0', display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '10px', height: '600px', position: 'relative' }}>
+                        
+                        {/* 🔥 NEW: Wishlist Heart on Main Image */}
+                        <div 
+                            onClick={(e) => handleWishlistToggle(e, selectedProduct.id)} 
+                            style={{ position: 'absolute', top: 20, right: 20, cursor: 'pointer', fontSize: '32px', zIndex: 10, background: 'rgba(255,255,255,0.8)', borderRadius: '50%', width: '50px', height: '50px', display: 'flex', justifyContent: 'center', alignItems: 'center', boxShadow: '0 2px 5px rgba(0,0,0,0.1)' }}
+                        >
+                            {wishlistIds.includes(selectedProduct.id) ? '❤️' : '🤍'}
+                        </div>
+
                         <img src={mainImage} alt={selectedProduct.name} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
                     </div>
                 </div>
@@ -149,7 +228,6 @@ const BuyerShopView = ({ user, selectedSeller, onBack, addToCart, refreshKey }) 
                         </span>
                         <span style={{ color: '#878787', fontSize: '14px', marginRight: '15px' }}>{totalRatings} Ratings</span>
                         
-                        {/* READ-ONLY STARS (Since rating is now done at checkout) */}
                         <div style={{ display: 'flex', alignItems: 'center', gap: '4px', borderLeft: '1px solid #e0e0e0', paddingLeft: '15px' }}>
                             {[1, 2, 3, 4, 5].map(star => (
                                 <span key={star} style={{ fontSize: '24px', color: star <= Math.round(Number(avgRating)) ? '#ff9f00' : '#e0e0e0', lineHeight: '1' }}>
@@ -174,7 +252,6 @@ const BuyerShopView = ({ user, selectedSeller, onBack, addToCart, refreshKey }) 
                             <span style={{ fontSize: '18px' }}>📍</span>
                             <div>
                                 <div style={{ fontSize: '14px', fontWeight: '500', color: '#212121' }}>Delivery details</div>
-                                {/* Make Store Name Clickable Here Too */}
                                 <div 
                                     onClick={() => setShowSellerProfile(true)}
                                     style={{ fontSize: '13px', color: '#2874f0', marginTop: '4px', cursor: 'pointer' }}
@@ -205,17 +282,25 @@ const BuyerShopView = ({ user, selectedSeller, onBack, addToCart, refreshKey }) 
                         <p style={{ fontSize: '14px', color: '#212121', lineHeight: '1.6' }}>{selectedProduct.description || 'No description provided by the seller.'}</p>
                     </div>
 
+                    {/* 🔥 THE NEW NOTIFY ME LOGIC */}
                     <div style={{ display: 'flex', gap: '15px', marginTop: '30px' }}>
-                        <button onClick={() => addToCart(selectedProduct)} disabled={selectedProduct.qty <= 0} style={{ flex: 1, padding: '16px', background: selectedProduct.qty > 0 ? '#ff9f00' : '#e0e0e0', color: selectedProduct.qty > 0 ? 'white' : '#999', border: 'none', borderRadius: '4px', fontSize: '16px', fontWeight: 'bold', cursor: selectedProduct.qty > 0 ? 'pointer' : 'not-allowed', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '10px' }}>
-                            🛒 {selectedProduct.qty > 0 ? 'ADD TO CART' : 'OUT OF STOCK'}
-                        </button>
-                        {selectedProduct.qty > 0 && (
-                            <button onClick={() => { addToCart(selectedProduct); alert("Item added. Please proceed to cart to checkout."); }} style={{ flex: 1, padding: '16px', background: '#fb641b', color: 'white', border: 'none', borderRadius: '4px', fontSize: '16px', fontWeight: 'bold', cursor: 'pointer' }}>
-                                ⚡ BUY NOW
+                        {Number(selectedProduct.qty) > 0 ? (
+                            <>
+                                <button onClick={() => addToCart(selectedProduct, false)} style={{ flex: 1, padding: '16px', background: '#ff9f00', color: 'white', border: 'none', borderRadius: '4px', fontSize: '16px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '10px' }}>
+                                    🛒 ADD TO CART
+                                </button>
+                                <button onClick={() => addToCart(selectedProduct, true)} style={{ flex: 1, padding: '16px', background: '#fb641b', color: 'white', border: 'none', borderRadius: '4px', fontSize: '16px', fontWeight: 'bold', cursor: 'pointer' }}>
+                                    ⚡ BUY NOW
+                                </button>
+                            </>
+                        ) : (
+                            <button onClick={() => alert("We'll email you when this item is back in stock!")} style={{ flex: 1, padding: '16px', background: 'white', color: '#2874f0', border: '1px solid #2874f0', borderRadius: '4px', fontSize: '16px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '10px' }}>
+                                🔔 NOTIFY ME
                             </button>
                         )}
                     </div>
                     {Number(selectedProduct.qty) > 0 && Number(selectedProduct.qty) <= 5 && <div style={{ color: '#d32f2f', fontWeight: '500', marginTop: '15px', fontSize: '14px' }}>Only few left</div>}
+                    {Number(selectedProduct.qty) <= 0 && <div style={{ color: '#d32f2f', fontWeight: 'bold', marginTop: '15px', fontSize: '16px' }}>Currently Out of Stock</div>}
                 </div>
             </div>
             
@@ -239,8 +324,6 @@ const BuyerShopView = ({ user, selectedSeller, onBack, addToCart, refreshKey }) 
                   {storeLogo ? <img src={storeLogo} alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span style={{ fontSize: '36px' }}>🏪</span>}
               </div>
               <div style={{ paddingBottom: '5px' }}>
-                  
-                  {/* 🔥 NEW: Clickable Store Name with Hover Effect */}
                   <h2 
                       onClick={() => setShowSellerProfile(true)}
                       style={{ margin: '0 0 5px 0', fontSize: '24px', color: '#2874f0', cursor: 'pointer', display: 'inline-block' }}
@@ -250,7 +333,6 @@ const BuyerShopView = ({ user, selectedSeller, onBack, addToCart, refreshKey }) 
                   >
                       {storeName}
                   </h2>
-                  
                   <div style={{ color: '#878787', fontSize: '14px' }}><span style={{ color: '#388e3c', fontWeight: 'bold' }}>✓ Verified</span> • {products.length} Products</div>
               </div>
           </div>
@@ -281,11 +363,19 @@ const BuyerShopView = ({ user, selectedSeller, onBack, addToCart, refreshKey }) 
                       onMouseOver={(e) => e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)'}
                       onMouseOut={(e) => e.currentTarget.style.boxShadow = 'none'}
                   >
+                      {/* 🔥 NEW: Wishlist Icon on Listing Card */}
+                      <div 
+                          onClick={(e) => handleWishlistToggle(e, p.id)} 
+                          style={{ position: 'absolute', top: 10, right: 10, cursor: 'pointer', fontSize: '20px', zIndex: 10, background: 'rgba(255,255,255,0.8)', borderRadius: '50%', width: '32px', height: '32px', display: 'flex', justifyContent: 'center', alignItems: 'center' }}
+                      >
+                          {wishlistIds.includes(p.id) ? '❤️' : '🤍'}
+                      </div>
+
                       <div style={{ width: '100%', aspectRatio: '3/4', background: '#f9f9f9', display: 'flex', justifyContent: 'center', alignItems: 'center', overflow: 'hidden' }}>
-                          <img src={thumb} alt={p.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                          <img src={thumb} alt={p.name} style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: p.qty <= 0 ? 0.5 : 1 }} />
                       </div>
                       
-                      <div style={{ padding: '12px 10px', display: 'flex', flexDirection: 'column', flex: 1 }}>
+                      <div style={{ padding: '12px 10px', display: 'flex', flexDirection: 'column', flex: 1, opacity: p.qty <= 0 ? 0.6 : 1 }}>
                           <div style={{ color: '#878787', fontSize: '13px', fontWeight: '500', marginBottom: '4px', textTransform: 'uppercase' }}>{p.brand || p.category || 'Generic'}</div>
                           <div style={{ color: '#212121', fontSize: '14px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginBottom: '8px' }} title={p.name}>{p.name}</div>
                           
@@ -300,7 +390,7 @@ const BuyerShopView = ({ user, selectedSeller, onBack, addToCart, refreshKey }) 
                           </div>
                           
                           {Number(p.qty) <= 0 
-                              ? <div style={{ color: '#878787', fontSize: '13px', marginTop: '6px', fontWeight: '500' }}>Out of Stock</div>
+                              ? <div style={{ color: '#dc3545', fontSize: '13px', marginTop: '6px', fontWeight: 'bold' }}>Out of Stock</div>
                               : Number(p.qty) <= 5 && <div style={{ color: '#d32f2f', fontSize: '13px', marginTop: '6px', fontWeight: '500' }}>Only few left</div>
                           }
                       </div>
