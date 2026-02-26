@@ -12,14 +12,11 @@ const AuthScreen = ({ onUserAuthenticated }) => {
   const [newPassword, setNewPassword] = useState('');
   const [isVerifying, setIsVerifying] = useState(false);
   
-  // 🔥 NEW: Custom Notification State
   const [notify, setNotify] = useState({ text: '', type: '' });
 
-  // Helper to show modern notifications instead of ugly alerts
   const showNotification = (text, type = 'success') => {
       setNotify({ text, type });
-      // Auto-hide after 3.5 seconds
-      setTimeout(() => setNotify({ text: '', type: '' }), 3500);
+      setTimeout(() => setNotify({ text: '', type: '' }), 4500); // Slightly longer to read constraints
   };
 
   const switchView = (newView) => {
@@ -27,11 +24,46 @@ const AuthScreen = ({ onUserAuthenticated }) => {
       setIsVerifying(false); 
       setOtp('');            
       setNewPassword('');  
-      setNotify({ text: '', type: '' }); // Clear messages on tab switch
+      setNotify({ text: '', type: '' });
+  };
+
+  // 🔥 NEW: Validation Logic
+  const validateInputs = () => {
+    // 1. Name Validation (Min 3 chars, Alphabets & Spaces only)
+    const nameRegex = /^[a-zA-Z\s]{3,}$/;
+    if (!nameRegex.test(fullName)) {
+        showNotification("Name must be at least 3 characters and contain only letters.", "error");
+        return false;
+    }
+
+    // 2. Email Validation (Standard Email Format)
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+        showNotification("Please enter a valid email address.", "error");
+        return false;
+    }
+
+    // 3. Password Validation (Min 8 chars, 1 Uppercase, 1 Lowercase, 1 Number)
+    const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
+    if (!passwordRegex.test(password)) {
+        showNotification("Password must be 8+ characters with at least one uppercase, one lowercase, and one number.", "error");
+        return false;
+    }
+
+    if (role === 'SELLER' && !storeName.trim()) {
+        showNotification("Please enter your Store Name.", "error");
+        return false;
+    }
+
+    return true;
   };
 
   const handleInitiateSignup = async () => {
     if (!email || !password || !fullName) return showNotification("Please fill all fields", "error");
+    
+    // 🔥 Trigger Constraints Check
+    if (!validateInputs()) return;
+
     try {
         await axios.post('http://localhost:7071/api/SendOTP', { email });
         setIsVerifying(true);
@@ -49,12 +81,16 @@ const AuthScreen = ({ onUserAuthenticated }) => {
   const handleCompleteSignup = async () => {
     try {
       const res = await axios.post('http://localhost:7071/api/VerifyOTP', { email, otp, fullName, password, role, storeName });
-      const userData = { userId: res.data.userId, role: res.data.role, name: res.data.name, token: res.data.token };
+      const userData = { 
+          userId: res.data.userId, 
+          role: res.data.role, 
+          name: res.data.name, 
+          token: res.data.token,
+          isApproved: false 
+      };
       setIsVerifying(false);
       
-      // We still use an alert here just once to welcome the user before redirecting, 
-      // but the annoying OTP alerts are gone!
-      if (userData.role === 'SELLER') alert(`✅ Welcome, ${userData.name}! Your Seller Dashboard is ready.`);
+      if (userData.role === 'SELLER') alert(`✅ Welcome, ${userData.name}! Your shop is currently pending admin approval.`);
       else alert(`✅ Welcome, ${userData.name}! Happy Shopping.`);
       
       onUserAuthenticated(userData);
@@ -75,11 +111,18 @@ const AuthScreen = ({ onUserAuthenticated }) => {
   };
 
   const handleFinalizeReset = async () => {
-    if(!otp || !newPassword) return showNotification("Fill all fields", "error");
+    // 🔥 Validate New Password during reset too
+    const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
+    if (!passwordRegex.test(newPassword)) {
+        return showNotification("New password must be 8+ characters with uppercase, lowercase, and a number.", "error");
+    }
+
+    if(!otp) return showNotification("Please enter OTP", "error");
+
     try {
         await axios.post('http://localhost:7071/api/ResetPassword', { email, otp, newPassword });
         showNotification("✅ Password Updated! Please login.", "success");
-        setTimeout(() => switchView('login'), 2000); // Switch to login after 2 seconds
+        setTimeout(() => switchView('login'), 2000); 
     } catch (err) {
         showNotification(err.response?.data || "Failed to reset password", "error");
     }
@@ -88,7 +131,8 @@ const AuthScreen = ({ onUserAuthenticated }) => {
   const handleLogin = async () => {
     try {
       const res = await axios.post('http://localhost:7071/api/Login', { email, password });
-      const userData = { userId: res.data.userId, role: res.data.role, name: res.data.name, token: res.data.token };
+      const { userId, role, name, token, isApproved, email: userEmail, phone } = res.data;
+      const userData = { userId, role, name, token, isApproved, email: userEmail, phone };
       onUserAuthenticated(userData);
     } catch (err) {
       if (err.response && err.response.data) showNotification(err.response.data, "error"); 
@@ -98,23 +142,22 @@ const AuthScreen = ({ onUserAuthenticated }) => {
 
   return (
     <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', background: '#f4f6f8' }}>
-      <div style={{ width: 350, background: 'white', padding: 40, borderRadius: 10, boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>
+      <div style={{ width: 380, background: 'white', padding: 40, borderRadius: 10, boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>
         <h2 style={{ textAlign: 'center', color: '#333' }}>
             {view === 'login' ? 'Welcome Back' : view === 'register' ? 'Join Us' : 'Reset Password'}
         </h2>
         
-        {/* 🔥 THE INLINE NOTIFICATION BANNER */}
         {notify.text && (
             <div style={{
-                padding: '10px',
+                padding: '12px',
                 marginBottom: '15px',
                 borderRadius: '6px',
                 backgroundColor: notify.type === 'error' ? '#f8d7da' : '#d4edda',
                 color: notify.type === 'error' ? '#721c24' : '#155724',
-                fontSize: '14px',
-                textAlign: 'center',
+                fontSize: '13px',
+                textAlign: 'left',
                 border: `1px solid ${notify.type === 'error' ? '#f5c6cb' : '#c3e6cb'}`,
-                animation: 'fadeIn 0.3s ease-in-out'
+                lineHeight: '1.4'
             }}>
                 {notify.text}
             </div>
@@ -122,11 +165,11 @@ const AuthScreen = ({ onUserAuthenticated }) => {
 
         {view === 'register' && !isVerifying && (
             <>
-                <input placeholder="Full Name" onChange={e=>setFullName(e.target.value)} style={{width:'100%', padding:10, marginBottom:10, borderRadius:4, border:'1px solid #ccc', boxSizing: 'border-box'}} />
-                <select onChange={e=>setRole(e.target.value)} style={{width:'100%', padding:'10px', marginBottom:10, borderRadius:4, boxSizing: 'border-box'}}>
+                <input placeholder="Full Name" value={fullName} onChange={e=>setFullName(e.target.value)} style={{width:'100%', padding:10, marginBottom:10, borderRadius:4, border:'1px solid #ccc', boxSizing: 'border-box'}} />
+                <select value={role} onChange={e=>setRole(e.target.value)} style={{width:'100%', padding:'10px', marginBottom:10, borderRadius:4, boxSizing: 'border-box', border:'1px solid #ccc'}}>
                     <option value="BUYER">Buyer</option><option value="SELLER">Seller</option>
                 </select>
-                {role === 'SELLER' && <input placeholder="Store Name" onChange={e=>setStoreName(e.target.value)} style={{width:'100%', padding:10, marginBottom:10, borderRadius:4, border:'1px solid #ccc', boxSizing: 'border-box'}} />}
+                {role === 'SELLER' && <input placeholder="Store Name" value={storeName} onChange={e=>setStoreName(e.target.value)} style={{width:'100%', padding:10, marginBottom:10, borderRadius:4, border:'1px solid #ccc', boxSizing: 'border-box'}} />}
             </>
         )}
 

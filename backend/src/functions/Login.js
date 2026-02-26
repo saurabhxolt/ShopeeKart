@@ -13,7 +13,6 @@ app.http('Login', {
             await sql.connect(process.env.SQL_CONNECTION);
             
             // 2. Query User (Checking Role, Ban Status, and Soft Delete)
-            // 🔥 UPDATED: Added u.Email and u.Phone to the SELECT statement
             const result = await sql.query`
                 SELECT 
                     u.UserId, 
@@ -27,7 +26,7 @@ app.http('Login', {
                 FROM Users u
                 LEFT JOIN Sellers s ON u.UserId = s.UserId
                 WHERE u.Email = ${email} 
-                AND (u.IsDeleted = 0 OR u.IsDeleted IS NULL) -- <--- BLOCKS DELETED USERS
+                AND (u.IsDeleted = 0 OR u.IsDeleted IS NULL)
             `;
 
             const user = result.recordset[0];
@@ -38,17 +37,13 @@ app.http('Login', {
             }
 
             // 4. Security Checks
-            // Check if Banned
+            // Check if Banned - We still block banned users entirely
             if (user.IsBanned) {
                 return { status: 403, body: "🚫 Your account has been banned. Contact Admin." };
             }
 
-            // Check Seller Approval (If they are a seller)
-            if (user.Role === 'SELLER') {
-                if (user.IsApproved === false || user.IsApproved === 0 || user.IsApproved === null) {
-                    return { status: 403, body: "⏳ Your seller account is pending approval." };
-                }
-            }
+            // 🔥 UPDATED: Removed the block for Unapproved Sellers. 
+            // We now allow them to login so they can modify their details.
 
             // 5. Verify Password
             const isMatch = await bcrypt.compare(password, user.PasswordHash);
@@ -58,7 +53,6 @@ app.http('Login', {
             }
 
             // 6. Success - Return User Data
-            // 🔥 UPDATED: Now returning email and phone to the frontend
             return {
                 status: 200,
                 jsonBody: {
@@ -67,6 +61,8 @@ app.http('Login', {
                     name: user.FullName,
                     email: user.Email,
                     phone: user.Phone,
+                    // 🔥 Pass the approval status to the frontend so we can show a warning bar
+                    isApproved: user.IsApproved === 1 || user.IsApproved === true,
                     token: "dummy-jwt-token" 
                 }
             };

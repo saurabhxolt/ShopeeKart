@@ -44,7 +44,6 @@ const SellerDashboard = ({ user }) => {
       let delivered = 0;
       
       orderRes.data.forEach(o => {
-          // 🔥 FIX: Safely checks for both 'Cancelled' and 'Cancelled by Admin'
           if (o.Status && !o.Status.includes('Cancelled')) {
               rev += (o.TotalAmount || 0);
               total += 1; 
@@ -82,6 +81,11 @@ const SellerDashboard = ({ user }) => {
   };
 
   const handleToggleVisibility = async (product) => {
+    // 🔥 NEW: Prevent unapproved sellers from making products live
+    if (!user.isApproved) {
+        return showToast("Account pending approval. You cannot make products live yet.", "error");
+    }
+
     const newStatus = product.isActive === false ? true : false;
     
     try {
@@ -146,10 +150,12 @@ const SellerDashboard = ({ user }) => {
     try {
         await axios.post('http://localhost:7071/api/AddProduct', { 
             userId: user.userId, name, price, stock, description, originalPrice: origPrice, 
-            category, brand, weight, sku, images: processedImages, isActive: true 
+            category, brand, weight, sku, images: processedImages, 
+            // 🔥 NEW: Products from unapproved sellers stay as drafts (isActive: false)
+            isActive: user.isApproved ? true : false 
         });
         
-        showToast("Product Added Successfully!", "success");
+        showToast(user.isApproved ? "Product Added Successfully!" : "Product Saved as Draft (Pending Approval)", "success");
         setIsAddModalOpen(false); 
         loadDashboardData();
         
@@ -176,6 +182,28 @@ const SellerDashboard = ({ user }) => {
   return (
     <div style={{ position: 'relative', minHeight: '100vh', paddingBottom: '50px' }}>
       
+      {/* 🔥 NEW: Pending Approval Banner */}
+      {!user.isApproved && (
+        <div style={{
+            background: '#fff3cd',
+            color: '#856404',
+            padding: '15px 20px',
+            borderRadius: '8px',
+            border: '1px solid #ffeeba',
+            marginBottom: '20px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '15px',
+            boxShadow: '0 2px 4px rgba(0,0,0,0.05)',
+            fontWeight: '500'
+        }}>
+            <span style={{ fontSize: '20px' }}>⏳</span>
+            <div>
+                <strong>Your account is pending admin approval.</strong> Your products will be saved as drafts and will not be visible to buyers until your store is verified.
+            </div>
+        </div>
+      )}
+
       {toast.visible && (
         <div style={{
             position: 'fixed',
@@ -215,6 +243,7 @@ const SellerDashboard = ({ user }) => {
           </div>
       </div>
 
+      {/* Metric Cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '20px', marginBottom: '25px' }}>
           <div style={{ background: 'white', padding: '20px', borderRadius: '10px', boxShadow: '0 2px 8px rgba(0,0,0,0.05)', borderLeft: '4px solid #28a745' }}>
               <div style={{ color: '#888', fontSize: '12px', fontWeight: 'bold', textTransform: 'uppercase' }}>Total Revenue</div>
@@ -245,6 +274,7 @@ const SellerDashboard = ({ user }) => {
           </div>
       </div>
 
+      {/* Filters */}
       <div style={{ display: 'flex', gap: '15px', marginBottom: '25px', background: 'white', padding: '15px', borderRadius: '8px', boxShadow: '0 2px 5px rgba(0,0,0,0.05)', border: '1px solid #eee' }}>
           <input type="text" placeholder="🔍 Search by Name or SKU..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} style={{ flex: 2, padding: '10px', borderRadius: '6px', border: '1px solid #ccc' }} />
           <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)} style={{ flex: 1, padding: '10px', borderRadius: '6px', border: '1px solid #ccc' }}>
@@ -257,6 +287,7 @@ const SellerDashboard = ({ user }) => {
           </select>
       </div>
 
+      {/* Product List */}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 20 }}>
         {filteredProducts.length === 0 ? (
             <div style={{ width: '100%', textAlign: 'center', padding: '40px', color: '#888' }}>No products match your search or filters.</div>
@@ -368,7 +399,7 @@ const SellerDashboard = ({ user }) => {
                     )}
                     
                     <div style={{ display: 'flex', gap: '5px', marginTop: '5px' }}>
-                        {/* THE VISIBILITY BUTTON IS DISABLED IF ARCHIVED */}
+                        {/* 🔥 UPDATED: Toggle visibility check */}
                         <button 
                             disabled={p.isArchived}
                             onClick={() => handleToggleVisibility(p)} 
@@ -387,7 +418,6 @@ const SellerDashboard = ({ user }) => {
                             {p.isArchived ? '🚫 Locked' : (p.isActive === false ? '✅ Set Active' : '👁️ Hide / Draft')}
                         </button>
 
-                        {/* EDIT AND DELETE REMAIN AVAILABLE SO THEY CAN FIX ISSUES */}
                         <button onClick={() => setEditingProduct(p)} style={{ flex: 1, background: '#ffc107', border: 'none', padding: '8px', borderRadius: 4, cursor: 'pointer', fontWeight: 'bold', fontSize: '12px' }}>Edit</button>
                         <button onClick={() => handleDeleteProduct(p.id)} style={{ flex: 1, color: 'red', border: '1px solid red', padding: '8px', borderRadius: 4, background: 'white', cursor: 'pointer', fontSize: '12px' }}>Delete</button>
                     </div>
