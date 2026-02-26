@@ -27,17 +27,22 @@ export const ManageOrderModal = ({ managingOrder, setManagingOrder, handleAction
           <div style={{ background: '#e9ecef', padding: '15px', borderRadius: '8px', marginBottom: '25px', textAlign: 'center' }}>
               <p style={{ margin: '0 0 5px 0', fontSize: '16px' }}>Order Total: <strong>₹{managingOrder.TotalAmount}</strong></p>
               <p style={{ margin: '0 0 5px 0', fontSize: '14px' }}>Current Status: <strong>{managingOrder.Status}</strong></p>
-              <p style={{ margin: 0, fontSize: '12px', color: '#666' }}>Time since placed: {managingOrder.HoursSincePlaced} hours</p>
+              
+              {/* 🔥 FIX: Stripped 'Z' to force local DB time without double conversion */}
+              <p style={{ margin: '5px 0 0 0', fontSize: '13px', color: '#555' }}>
+                  Placed: <strong>{managingOrder.OrderDate ? new Date(managingOrder.OrderDate.replace('Z', '')).toLocaleString('en-IN', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }) : 'N/A'}</strong> 
+                  <span style={{ fontSize: '11px', color: '#888', display: 'block', marginTop: '2px' }}>({managingOrder.HoursSincePlaced} hours ago)</span>
+              </p>
           </div>
 
           <div style={{ borderTop: '2px solid #eee', paddingTop: '20px', display: 'flex', gap: '15px' }}>
-              {managingOrder.Status !== 'Cancelled' ? (
+              {managingOrder.Status && !managingOrder.Status.includes('Cancelled') ? (
                   <button onClick={() => handleAction('FORCE_CANCEL_ORDER', managingOrder.OrderId)} style={{ flex: 1, padding: '12px', background: '#dc3545', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '14px' }}>
                       🚫 Admin: Force Cancel
                   </button>
               ) : (
                   <div style={{ flex: 1, padding: '12px', background: '#f8d7da', color: '#721c24', textAlign: 'center', borderRadius: '6px', fontWeight: 'bold', border: '1px solid #f5c6cb' }}>
-                      This order is already Cancelled.
+                      This order is already {managingOrder.Status}.
                   </div>
               )}
               <button onClick={() => setManagingOrder(null)} style={{ flex: 1, padding: '12px', background: '#6c757d', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>Close Window</button>

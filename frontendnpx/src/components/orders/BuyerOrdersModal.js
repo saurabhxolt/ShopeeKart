@@ -52,7 +52,6 @@ const BuyerOrdersModal = ({ isOpen, onClose, userId }) => {
         }
     };
 
-    // 🔥 FIX: Now safely checks for Address, ShippingAddress, or DeliveryAddress
     const parseAddress = (addressStr) => {
         if (!addressStr) return { name: 'N/A', phone: '', address: 'No address provided', payment: 'COD' };
         try {
@@ -168,7 +167,8 @@ const BuyerOrdersModal = ({ isOpen, onClose, userId }) => {
                                 <div style={{ flex: 2 }}>
                                     <div style={{ fontSize: '14px', fontWeight: '500', color: '#212121', display: 'flex', alignItems: 'center', gap: '8px' }}>
                                         <span style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: statusColor }}></span>
-                                        {order.Status} on {new Date(order.OrderDate).toLocaleDateString('en-IN', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                        {/* 🔥 FIX: Date and time shown for the list view */}
+                                        {order.Status} on {order.OrderDate ? new Date(order.OrderDate.replace('Z', '')).toLocaleString('en-IN', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }) : 'N/A'}
                                     </div>
                                     <div style={{ fontSize: '12px', color: '#878787', marginTop: '4px' }}>
                                         {isCancelled ? 'Order was cancelled.' : `Your item has been ${order.Status.toLowerCase()}`}
@@ -194,7 +194,6 @@ const BuyerOrdersModal = ({ isOpen, onClose, userId }) => {
         const o = selectedOrder;
         const item = selectedItem;
         
-        // 🔥 PASSING ShippingAddress to avoid N/A bugs
         const addressData = parseAddress(o.ShippingAddress || o.Address || o.DeliveryAddress);
         
         const itemId = item.id || item.ProductId;
@@ -254,7 +253,8 @@ const BuyerOrdersModal = ({ isOpen, onClose, userId }) => {
                                         <div style={{ width: '14px', height: '14px', borderRadius: '50%', background: '#ff6161', zIndex: 1, marginTop: '2px' }}></div>
                                         <div style={{ marginTop: '-2px' }}>
                                             <div style={{ fontWeight: '500', color: '#ff6161', fontSize: '14px' }}>Cancelled</div>
-                                            <div style={{ fontSize: '12px', color: '#878787', marginTop: '4px' }}>Order was cancelled on {new Date(o.OrderDate).toDateString()}</div>
+                                            {/* 🔥 FIX: Date and time shown for cancelled orders */}
+                                            <div style={{ fontSize: '12px', color: '#878787', marginTop: '4px' }}>Order was cancelled on {o.OrderDate ? new Date(o.OrderDate.replace('Z', '')).toLocaleString('en-IN', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }) : 'N/A'}</div>
                                         </div>
                                     </div>
                                 ) : (
@@ -270,7 +270,8 @@ const BuyerOrdersModal = ({ isOpen, onClose, userId }) => {
                                                 {/* Text */}
                                                 <div style={{ marginTop: '-2px' }}>
                                                     <div style={{ fontWeight: '500', color: isCompleted ? '#212121' : '#878787', fontSize: '14px' }}>Order {step}</div>
-                                                    {isCompleted && <div style={{ fontSize: '12px', color: '#878787', marginTop: '4px' }}>{new Date(o.OrderDate).toDateString()}</div>}
+                                                    {/* 🔥 FIX: Date and time shown for completed timeline steps */}
+                                                    {isCompleted && <div style={{ fontSize: '12px', color: '#878787', marginTop: '4px' }}>{o.OrderDate ? new Date(o.OrderDate.replace('Z', '')).toLocaleString('en-IN', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }) : 'N/A'}</div>}
                                                 </div>
                                             </div>
                                         );

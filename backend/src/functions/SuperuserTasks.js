@@ -7,14 +7,71 @@ app.http('SuperuserTasks', {
     authLevel: 'anonymous',
     handler: async (request, context) => {
         try {
-            // 🔥 Added 'message' to capture the Admin's reason
             const { action, targetId, message } = await request.json();
 
             await sql.connect(process.env.SQL_CONNECTION);
 
+            // ==========================================
+            // 🔥 NEW: Advanced Transaction for Order Cancellation
+            // ==========================================
+            if (action === 'FORCE_CANCEL_ORDER') {
+                const transaction = new sql.Transaction();
+                await transaction.begin();
+
+                try {
+                    // 1. Get all active items in this order
+                    const req1 = new sql.Request(transaction);
+                    req1.input('oId', sql.Int, parseInt(targetId));
+                    const items = await req1.query(`
+                        SELECT ProductId, Qty 
+                        FROM OrderItems 
+                        WHERE OrderId = @oId AND ItemStatus != 'Cancelled' AND ItemStatus != 'Cancelled by Admin'
+                    `);
+
+                    // 2. Loop through items and restore the exact Stock quantities
+                    for (const item of items.recordset) {
+                        const req2 = new sql.Request(transaction);
+                        req2.input('qty', sql.Int, parseInt(item.Qty));
+                        req2.input('pId', sql.Int, parseInt(item.ProductId));
+                        await req2.query(`
+                            UPDATE Products 
+                            SET Stock = Stock + @qty 
+                            WHERE ProductId = @pId
+                        `);
+                    }
+
+                    // 3. Mark the items as cancelled by admin
+                    const req3 = new sql.Request(transaction);
+                    req3.input('oId', sql.Int, parseInt(targetId));
+                    await req3.query(`
+                        UPDATE OrderItems 
+                        SET ItemStatus = 'Cancelled by Admin' 
+                        WHERE OrderId = @oId
+                    `);
+
+                    // 4. Mark the main order as cancelled by admin
+                    const req4 = new sql.Request(transaction);
+                    req4.input('oId', sql.Int, parseInt(targetId));
+                    await req4.query(`
+                        UPDATE Orders 
+                        SET Status = 'Cancelled by Admin' 
+                        WHERE OrderId = @oId
+                    `);
+
+                    await transaction.commit();
+                    return { status: 200, body: "Order Cancelled & Stock Restored" };
+                } catch (err) {
+                    await transaction.rollback();
+                    throw err; // Send to main catch block
+                }
+            }
+
+            // ==========================================
+            // STANDARD SINGLE-QUERY ACTIONS
+            // ==========================================
             const dbRequest = new sql.Request();
             dbRequest.input('id', sql.Int, targetId);
-            dbRequest.input('message', sql.NVarChar, message || null); // Bind parameter safely
+            dbRequest.input('message', sql.NVarChar, message || null);
 
             let query = "";
 
@@ -39,26 +96,14 @@ app.http('SuperuserTasks', {
                     COMMIT TRANSACTION;
                 `;
             }
-            // 🔥 UPDATED: Save AdminMessage when archiving, clear it when restoring
             else if (action === 'TOGGLE_PRODUCT') {
                 query = `
                     UPDATE Products 
                     SET 
                         IsArchived = CASE WHEN IsArchived = 1 THEN 0 ELSE 1 END,
                         AdminMessage = CASE WHEN IsArchived = 1 THEN NULL ELSE @message END,
-                        FixSubmitted = 0 -- 🔥 ALWAYS RESET TO 0 WHEN ADMIN ACTIONS THE PRODUCT
+                        FixSubmitted = 0
                     WHERE ProductId = @id
-                `;
-            }
-            else if (action === 'FORCE_CANCEL_ORDER') {
-                query = `
-                    UPDATE Orders 
-                    SET Status = 'Cancelled' 
-                    WHERE OrderId = @id;
-                    
-                    UPDATE OrderItems 
-                    SET ItemStatus = 'Cancelled' 
-                    WHERE OrderId = @id;
                 `;
             }
 

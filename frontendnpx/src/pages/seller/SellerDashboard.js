@@ -5,7 +5,6 @@ import Modal from '../../components/common/Modal';
 import ReadMore from '../../components/common/ReadMore';
 import ImageGallery from '../../components/common/ImageGallery';
 import SellerOrdersModal from '../../components/orders/SellerOrdersModal';
-// 🔥 NEW: Imported the Store Settings Profile Modal
 import SellerProfileModal from '../../components/profile/SellerProfileModal';
 
 const SellerDashboard = ({ user }) => {
@@ -13,8 +12,6 @@ const SellerDashboard = ({ user }) => {
   const [editingProduct, setEditingProduct] = useState(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isOrdersModalOpen, setIsOrdersModalOpen] = useState(false);
-  
-  // 🔥 NEW: State for Store Settings Modal
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
 
   const [searchTerm, setSearchTerm] = useState('');
@@ -47,7 +44,8 @@ const SellerDashboard = ({ user }) => {
       let delivered = 0;
       
       orderRes.data.forEach(o => {
-          if (o.Status !== 'Cancelled') {
+          // 🔥 FIX: Safely checks for both 'Cancelled' and 'Cancelled by Admin'
+          if (o.Status && !o.Status.includes('Cancelled')) {
               rev += (o.TotalAmount || 0);
               total += 1; 
           }

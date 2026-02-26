@@ -76,7 +76,7 @@ export const OrdersTab = ({ filteredOrders, uniqueOrderStores, orderStoreFilter,
       <table style={{ width: '100%', borderCollapse: 'collapse' }}>
         <thead>
           <tr style={{ background: '#343a40', color: 'white', textAlign: 'left' }}>
-            <th style={{ padding: '15px' }}>Order ID</th><th style={{ padding: '15px' }}>Parties (Buyer & Seller)</th><th style={{ padding: '15px' }}>Current Status</th><th style={{ padding: '15px' }}>Order Age</th><th style={{ padding: '15px' }}>Amount</th><th style={{ padding: '15px' }}>Action</th>
+            <th style={{ padding: '15px' }}>Order ID</th><th style={{ padding: '15px' }}>Parties (Buyer & Seller)</th><th style={{ padding: '15px' }}>Current Status</th><th style={{ padding: '15px' }}>Order Date (IST)</th><th style={{ padding: '15px' }}>Amount</th><th style={{ padding: '15px' }}>Action</th>
           </tr>
         </thead>
         <tbody>
@@ -87,11 +87,20 @@ export const OrdersTab = ({ filteredOrders, uniqueOrderStores, orderStoreFilter,
                 <td style={{ padding: '15px', fontWeight: 'bold' }}>#{o.OrderId}</td>
                 <td style={{ padding: '15px' }}><strong>Buyer:</strong> {o.BuyerName} <br/><strong>Store:</strong> {o.StoreName || 'Multi-Vendor'} (<small>{o.SellerPhone || 'No Phone'}</small>)</td>
                 <td style={{ padding: '15px' }}>
-                  <span style={{ padding: '4px 10px', borderRadius: '20px', fontSize: '12px', fontWeight: 'bold', background: o.Status === 'Delivered' ? '#d4edda' : (o.Status === 'Cancelled' ? '#f8d7da' : '#e2e3e5'), color: o.Status === 'Delivered' ? '#155724' : (o.Status === 'Cancelled' ? '#721c24' : '#383d41') }}>
+                  <span style={{ padding: '4px 10px', borderRadius: '20px', fontSize: '12px', fontWeight: 'bold', background: o.Status === 'Delivered' ? '#d4edda' : (o.Status.includes('Cancelled') ? '#f8d7da' : '#e2e3e5'), color: o.Status === 'Delivered' ? '#155724' : (o.Status.includes('Cancelled') ? '#721c24' : '#383d41') }}>
                     {o.Status.toUpperCase()}
                   </span>
                 </td>
-                <td style={{ padding: '15px' }}><div style={{ color: isStale ? '#856404' : '#666', fontWeight: isStale ? 'bold' : 'normal' }}>{o.HoursSincePlaced} hrs ago {isStale && <div style={{ fontSize: '10px', fontWeight: 'bold', color: '#dc3545', marginTop: '4px' }}>⚠️ STALE ORDER</div>}</div></td>
+                <td style={{ padding: '15px' }}>
+                    {/* 🔥 THE FIX: Strip 'Z' to force local DB time */}
+                    <div style={{ fontWeight: 'bold', fontSize: '13px', color: '#333' }}>
+                        {o.OrderDate ? new Date(o.OrderDate.replace('Z', '')).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true }) : 'N/A'}
+                    </div>
+                    <div style={{ color: isStale ? '#856404' : '#666', fontSize: '11px', marginTop: '4px', fontWeight: isStale ? 'bold' : 'normal' }}>
+                        ({o.HoursSincePlaced} hrs ago) 
+                        {isStale && <div style={{ fontSize: '10px', fontWeight: 'bold', color: '#dc3545', marginTop: '2px' }}>⚠️ STALE ORDER</div>}
+                    </div>
+                </td>
                 <td style={{ padding: '15px', fontWeight: 'bold' }}>₹{o.TotalAmount}</td>
                 <td style={{ padding: '15px' }}><button onClick={() => setManagingOrder(o)} style={{ background: '#007bff', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>Manage</button></td>
               </tr>

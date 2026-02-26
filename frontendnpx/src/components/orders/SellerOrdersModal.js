@@ -98,16 +98,20 @@ const SellerOrdersModal = ({ isOpen, onClose, sellerId }) => {
                             paymentMethod = parts[1].trim();
                         }
 
-                        const isTerminal = o.Status === 'Delivered' || o.Status === 'Cancelled';
+                        // 🔥 FIX: Check if status includes the word Cancelled
+                        const isTerminal = o.Status === 'Delivered' || o.Status?.includes('Cancelled');
 
                         return (
-                            <div key={o.OrderId} style={{ border: '1px solid #e0e0e0', borderRadius: '12px', padding: '20px', marginBottom: '20px', background: o.Status === 'Cancelled' ? '#fffcfc' : '#fff', boxShadow: '0 4px 10px rgba(0,0,0,0.03)' }}>
+                            <div key={o.OrderId} style={{ border: '1px solid #e0e0e0', borderRadius: '12px', padding: '20px', marginBottom: '20px', background: o.Status?.includes('Cancelled') ? '#fffcfc' : '#fff', boxShadow: '0 4px 10px rgba(0,0,0,0.03)' }}>
                                 
                                 {/* HEADER */}
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '15px', borderBottom: '1px solid #eee', paddingBottom: '15px' }}>
                                     <div>
                                         <h4 style={{ margin: '0 0 5px 0', fontSize: '18px' }}>Order <span style={{ color: '#007bff' }}>#{o.OrderId}</span></h4>
-                                        <div style={{ fontSize: '13px', color: '#888' }}>{new Date(o.OrderDate).toLocaleDateString('en-IN', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute:'2-digit' })}</div>
+                                        {/* 🔥 THE FIX: Strip 'Z' before passing to Date() so it forces Local Time reading */}
+                                        <div style={{ fontSize: '13px', color: '#888' }}>
+                                            {o.OrderDate ? new Date(o.OrderDate.replace('Z', '')).toLocaleString('en-IN', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }) : 'Date not available'}
+                                        </div>
                                     </div>
                                     <div>
                                         {isTerminal ? (
@@ -172,7 +176,7 @@ const SellerOrdersModal = ({ isOpen, onClose, sellerId }) => {
                                             key={idx} 
                                             onClick={() => setViewingItem(p)}
                                             title="Click to view full product details"
-                                            style={{ display: 'flex', alignItems: 'center', gap: '15px', marginBottom: '10px', opacity: p.ItemStatus === 'Cancelled' ? 0.5 : 1, cursor: 'pointer', padding: '8px', borderRadius: '8px', transition: 'background 0.2s' }}
+                                            style={{ display: 'flex', alignItems: 'center', gap: '15px', marginBottom: '10px', opacity: p.ItemStatus?.includes('Cancelled') ? 0.5 : 1, cursor: 'pointer', padding: '8px', borderRadius: '8px', transition: 'background 0.2s' }}
                                             onMouseOver={(e) => e.currentTarget.style.background = '#f8f9fa'}
                                             onMouseOut={(e) => e.currentTarget.style.background = 'transparent'}
                                         >
@@ -182,13 +186,13 @@ const SellerOrdersModal = ({ isOpen, onClose, sellerId }) => {
                                             <div style={{ flex: 1 }}>
                                                 <div style={{ fontWeight: 'bold', fontSize: '14px', color: '#007bff' }}>
                                                     {p.Name} ↗
-                                                    {p.ItemStatus === 'Cancelled' && <span style={{ color: '#dc3545', fontSize: '11px', marginLeft: '8px', border: '1px solid #dc3545', padding: '2px 4px', borderRadius: '4px' }}>CANCELLED</span>}
+                                                    {p.ItemStatus?.includes('Cancelled') && <span style={{ color: '#dc3545', fontSize: '11px', marginLeft: '8px', border: '1px solid #dc3545', padding: '2px 4px', borderRadius: '4px' }}>{p.ItemStatus.toUpperCase()}</span>}
                                                 </div>
                                                 <div style={{ fontSize: '12px', color: '#666', marginTop: '3px' }}>Qty: {p.Qty} × Rs.{p.Price}</div>
                                             </div>
                                             
                                             <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-                                                {p.ItemStatus !== 'Cancelled' && (o.Status === 'Placed' || o.Status === 'Confirmed') && (
+                                                {!p.ItemStatus?.includes('Cancelled') && (o.Status === 'Placed' || o.Status === 'Confirmed') && (
                                                     <button 
                                                         onClick={(e) => handleCancelItem(o.OrderId, p, e)}
                                                         style={{ color: '#dc3545', border: '1px solid #dc3545', background: 'white', cursor: 'pointer', padding: '4px 8px', fontSize: '11px', borderRadius: '4px', fontWeight: 'bold', transition: 'all 0.2s' }}
@@ -206,7 +210,8 @@ const SellerOrdersModal = ({ isOpen, onClose, sellerId }) => {
 
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '15px', borderTop: '2px dashed #eee', paddingTop: '15px' }}>
                                     <div style={{ fontSize: '13px', color: '#888' }}>
-                                        {o.Status === 'Cancelled' ? "This entire order was cancelled." : "Update status to notify the buyer."}
+                                        {o.Status === 'Cancelled by Admin' ? "⚠️ This order was forcefully cancelled by the platform Admin." : 
+                                         o.Status === 'Cancelled' ? "This entire order was cancelled." : "Update status to notify the buyer."}
                                     </div>
                                     <div style={{ fontSize: '18px' }}>
                                         <span style={{ color: '#666', fontSize: '14px', marginRight: '8px' }}>Total Amount:</span>
@@ -219,9 +224,8 @@ const SellerOrdersModal = ({ isOpen, onClose, sellerId }) => {
                 </div>
             </Modal>
 
-            {/* 🔥 COMPLETELY UPGRADED PRODUCT DETAILS SUB-MODAL */}
+            {/* 🔥 PRODUCT DETAILS SUB-MODAL */}
             {viewingItem && (() => {
-                // Dynamically merge cart snapshot with live database info
                 const liveInfo = getLiveProductInfo(viewingItem);
                 const displayDesc = liveInfo.description || viewingItem.Description || "No detailed description available.";
                 const liveStock = liveInfo.qty !== undefined ? liveInfo.qty : 'N/A';
@@ -243,14 +247,12 @@ const SellerOrdersModal = ({ isOpen, onClose, sellerId }) => {
 
                             <h3 style={{ margin: '0 0 10px 0', color: '#333', fontSize: '22px' }}>{viewingItem.Name}</h3>
                             
-                            {/* LIVE BADGES (SKU, Brand, Category) */}
                             <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', flexWrap: 'wrap' }}>
                                 <span style={{ background: '#e9ecef', padding: '4px 8px', borderRadius: '4px', fontSize: '12px', fontWeight: 'bold', color: '#495057' }}>SKU: {liveInfo.sku || 'N/A'}</span>
                                 <span style={{ background: '#e9ecef', padding: '4px 8px', borderRadius: '4px', fontSize: '12px', fontWeight: 'bold', color: '#495057' }}>Brand: {liveInfo.brand || 'N/A'}</span>
                                 <span style={{ background: '#e9ecef', padding: '4px 8px', borderRadius: '4px', fontSize: '12px', fontWeight: 'bold', color: '#495057' }}>Category: {liveInfo.category || 'N/A'}</span>
                             </div>
                             
-                            {/* PRICING & INVENTORY METRICS */}
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px', marginBottom: '20px', fontSize: '14px' }}>
                                 <div style={{ background: '#e7f1ff', padding: '12px', borderRadius: '6px', border: '1px solid #b6d4fe' }}>
                                     <strong style={{ color: '#0c63e4', display: 'block', fontSize: '11px', textTransform: 'uppercase', marginBottom: '4px' }}>Ordered Price</strong> 
@@ -260,7 +262,6 @@ const SellerOrdersModal = ({ isOpen, onClose, sellerId }) => {
                                     <strong style={{ color: '#856404', display: 'block', fontSize: '11px', textTransform: 'uppercase', marginBottom: '4px' }}>Ordered Qty</strong> 
                                     <span style={{ fontSize: '16px', fontWeight: 'bold' }}>{viewingItem.Qty} Units</span>
                                 </div>
-                                {/* Highlights Red if stock is low so the seller knows to re-order */}
                                 <div style={{ background: liveStock <= 5 ? '#f8d7da' : '#d4edda', padding: '12px', borderRadius: '6px', border: `1px solid ${liveStock <= 5 ? '#f5c6cb' : '#c3e6cb'}` }}>
                                     <strong style={{ color: liveStock <= 5 ? '#721c24' : '#155724', display: 'block', fontSize: '11px', textTransform: 'uppercase', marginBottom: '4px' }}>Live Stock Left</strong> 
                                     <span style={{ fontSize: '16px', fontWeight: 'bold' }}>{liveStock}</span>
