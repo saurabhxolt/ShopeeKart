@@ -1,11 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import axios from 'axios';
 
-const BuyerShopView = ({ user, selectedSeller, onBack, addToCart, refreshKey,targetProductId }) => {
+const BuyerShopView = ({ user, selectedSeller, onBack, addToCart, refreshKey, targetProductId }) => {
   const [products, setProducts] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
   
+  // 🔥 NEW STATE: Sorting
+  const [sortBy, setSortBy] = useState("newest");
+
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
 
@@ -117,16 +120,30 @@ const BuyerShopView = ({ user, selectedSeller, onBack, addToCart, refreshKey,tar
       }
   };
 
-  const categories = [...new Set(products.map(p => p.category).filter(Boolean))];
+  const categories = [...new Set(products.map(p => p.category || p.Category).filter(Boolean))];
 
-  const filteredProducts = products.filter(p => {
-    const matchesCategory = categoryFilter ? p.category === categoryFilter : true;
-    if (!matchesCategory) return false;
-    if (!searchTerm.trim()) return true;
-    const searchWords = searchTerm.toLowerCase().split(' ').filter(w => w.trim() !== '');
-    const searchableText = `${p.name || ''} ${p.brand || ''} ${p.category || ''} ${p.description || ''}`.toLowerCase();
-    return searchWords.every(word => searchableText.includes(word));
-  });
+  // 🔥 UPDATED LOGIC: Filter AND then Sort
+  const filteredProducts = useMemo(() => {
+    let result = products.filter(p => {
+        const matchesCategory = categoryFilter ? (p.category || p.Category) === categoryFilter : true;
+        if (!matchesCategory) return false;
+        if (!searchTerm.trim()) return true;
+        const searchWords = searchTerm.toLowerCase().split(' ').filter(w => w.trim() !== '');
+        const searchableText = `${p.name || p.Name || ''} ${p.brand || p.Brand || ''} ${p.category || p.Category || ''} ${p.description || p.Description || ''}`.toLowerCase();
+        return searchWords.every(word => searchableText.includes(word));
+    });
+
+    // Apply Sorting logic
+    return result.sort((a, b) => {
+        if (sortBy === "priceLow") return (a.price || a.Price) - (b.price || b.Price);
+        if (sortBy === "priceHigh") return (b.price || b.Price) - (a.price || a.Price);
+        if (sortBy === "newest") {
+            // Sort by CreatedAt descending (Newest first)
+            return new Date(b.createdAt || b.CreatedAt) - new Date(a.createdAt || a.CreatedAt);
+        }
+        return 0;
+    });
+  }, [products, searchTerm, categoryFilter, sortBy]);
 
   const getImages = (imageStr) => {
       if (!imageStr) return [];
@@ -182,10 +199,12 @@ const BuyerShopView = ({ user, selectedSeller, onBack, addToCart, refreshKey,tar
   // VIEW 1: PRODUCT DETAIL PAGE 
   // ============================================================================
   if (selectedProduct) {
-      const productImages = getImages(selectedProduct.imageUrl);
+      const productImages = getImages(selectedProduct.imageUrl || selectedProduct.ImageUrl);
       const mainImage = productImages[activeImageIndex] || 'https://via.placeholder.com/400';
-      const discount = selectedProduct.originalPrice > selectedProduct.price 
-          ? Math.round(((selectedProduct.originalPrice - selectedProduct.price) / selectedProduct.originalPrice) * 100) 
+      const pPrice = selectedProduct.price || selectedProduct.Price;
+      const pOrigPrice = selectedProduct.originalPrice || selectedProduct.OriginalPrice;
+      const discount = pOrigPrice > pPrice 
+          ? Math.round(((pOrigPrice - pPrice) / pOrigPrice) * 100) 
           : 0;
       const badgeColor = avgRating >= 3.5 ? '#388e3c' : (avgRating >= 2.5 ? '#ff9f00' : '#d32f2f');
 
@@ -208,10 +227,10 @@ const BuyerShopView = ({ user, selectedSeller, onBack, addToCart, refreshKey,tar
                         
                         {/* 🔥 NEW: Wishlist Heart on Main Image */}
                         <div 
-                            onClick={(e) => handleWishlistToggle(e, selectedProduct.id)} 
+                            onClick={(e) => handleWishlistToggle(e, selectedProduct.id || selectedProduct.ProductId)} 
                             style={{ position: 'absolute', top: 20, right: 20, cursor: 'pointer', fontSize: '32px', zIndex: 10, background: 'rgba(255,255,255,0.8)', borderRadius: '50%', width: '50px', height: '50px', display: 'flex', justifyContent: 'center', alignItems: 'center', boxShadow: '0 2px 5px rgba(0,0,0,0.1)' }}
                         >
-                            {wishlistIds.includes(selectedProduct.id) ? '❤️' : '🤍'}
+                            {wishlistIds.includes(selectedProduct.id || selectedProduct.ProductId) ? '❤️' : '🤍'}
                         </div>
 
                         <img src={mainImage} alt={selectedProduct.name} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
@@ -219,8 +238,8 @@ const BuyerShopView = ({ user, selectedSeller, onBack, addToCart, refreshKey,tar
                 </div>
 
                 <div style={{ flex: '1 1 500px', padding: '10px' }}>
-                    <div style={{ color: '#878787', fontSize: '14px', fontWeight: '500', marginBottom: '5px' }}>{selectedProduct.brand || 'Generic Brand'}</div>
-                    <h1 style={{ fontSize: '22px', color: '#212121', margin: '0 0 10px 0', fontWeight: 'normal' }}>{selectedProduct.name}</h1>
+                    <div style={{ color: '#878787', fontSize: '14px', fontWeight: '500', marginBottom: '5px' }}>{selectedProduct.brand || selectedProduct.Brand || 'Generic Brand'}</div>
+                    <h1 style={{ fontSize: '22px', color: '#212121', margin: '0 0 10px 0', fontWeight: 'normal' }}>{selectedProduct.name || selectedProduct.Name}</h1>
                     
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px', flexWrap: 'wrap' }}>
                         <span style={{ background: badgeColor, color: 'white', padding: '4px 8px', borderRadius: '3px', fontSize: '13px', fontWeight: 'bold' }}>
@@ -238,10 +257,10 @@ const BuyerShopView = ({ user, selectedSeller, onBack, addToCart, refreshKey,tar
                     </div>
 
                     <div style={{ display: 'flex', alignItems: 'flex-end', gap: '12px', marginBottom: '25px' }}>
-                        <span style={{ fontSize: '28px', fontWeight: '500', color: '#212121' }}>₹{selectedProduct.price}</span>
+                        <span style={{ fontSize: '28px', fontWeight: '500', color: '#212121' }}>₹{pPrice}</span>
                         {discount > 0 && (
                             <>
-                                <span style={{ fontSize: '16px', color: '#878787', textDecoration: 'line-through', marginBottom: '4px' }}>₹{selectedProduct.originalPrice}</span>
+                                <span style={{ fontSize: '16px', color: '#878787', textDecoration: 'line-through', marginBottom: '4px' }}>₹{pOrigPrice}</span>
                                 <span style={{ fontSize: '16px', color: '#388e3c', fontWeight: '500', marginBottom: '4px' }}>{discount}% off</span>
                             </>
                         )}
@@ -270,8 +289,8 @@ const BuyerShopView = ({ user, selectedSeller, onBack, addToCart, refreshKey,tar
                     <div style={{ marginBottom: '25px' }}>
                         <h3 style={{ fontSize: '16px', color: '#212121', margin: '0 0 15px 0' }}>Product highlights</h3>
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', fontSize: '14px' }}>
-                            <div><span style={{ color: '#878787' }}>Category:</span> {selectedProduct.category || 'N/A'}</div>
-                            <div><span style={{ color: '#878787' }}>Brand:</span> {selectedProduct.brand || 'N/A'}</div>
+                            <div><span style={{ color: '#878787' }}>Category:</span> {selectedProduct.category || selectedProduct.Category || 'N/A'}</div>
+                            <div><span style={{ color: '#878787' }}>Brand:</span> {selectedProduct.brand || selectedProduct.Brand || 'N/A'}</div>
                             <div><span style={{ color: '#878787' }}>SKU:</span> {selectedProduct.sku || 'N/A'}</div>
                             <div><span style={{ color: '#878787' }}>Weight:</span> {selectedProduct.weight ? `${selectedProduct.weight} kg` : 'N/A'}</div>
                         </div>
@@ -279,12 +298,11 @@ const BuyerShopView = ({ user, selectedSeller, onBack, addToCart, refreshKey,tar
 
                     <div style={{ marginBottom: '30px' }}>
                         <h3 style={{ fontSize: '16px', color: '#212121', margin: '0 0 10px 0' }}>Description</h3>
-                        <p style={{ fontSize: '14px', color: '#212121', lineHeight: '1.6' }}>{selectedProduct.description || 'No description provided by the seller.'}</p>
+                        <p style={{ fontSize: '14px', color: '#212121', lineHeight: '1.6' }}>{selectedProduct.description || selectedProduct.Description || 'No description provided by the seller.'}</p>
                     </div>
 
-                    {/* 🔥 THE NEW NOTIFY ME LOGIC */}
                     <div style={{ display: 'flex', gap: '15px', marginTop: '30px' }}>
-                        {Number(selectedProduct.qty) > 0 ? (
+                        {Number(selectedProduct.qty || selectedProduct.Stock) > 0 ? (
                             <>
                                 <button onClick={() => addToCart(selectedProduct, false)} style={{ flex: 1, padding: '16px', background: '#ff9f00', color: 'white', border: 'none', borderRadius: '4px', fontSize: '16px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '10px' }}>
                                     🛒 ADD TO CART
@@ -299,8 +317,8 @@ const BuyerShopView = ({ user, selectedSeller, onBack, addToCart, refreshKey,tar
                             </button>
                         )}
                     </div>
-                    {Number(selectedProduct.qty) > 0 && Number(selectedProduct.qty) <= 5 && <div style={{ color: '#d32f2f', fontWeight: '500', marginTop: '15px', fontSize: '14px' }}>Only few left</div>}
-                    {Number(selectedProduct.qty) <= 0 && <div style={{ color: '#d32f2f', fontWeight: 'bold', marginTop: '15px', fontSize: '16px' }}>Currently Out of Stock</div>}
+                    {(selectedProduct.qty || selectedProduct.Stock) > 0 && (selectedProduct.qty || selectedProduct.Stock) <= 5 && <div style={{ color: '#d32f2f', fontWeight: '500', marginTop: '15px', fontSize: '14px' }}>Only few left</div>}
+                    {(selectedProduct.qty || selectedProduct.Stock) <= 0 && <div style={{ color: '#d32f2f', fontWeight: 'bold', marginTop: '15px', fontSize: '16px' }}>Currently Out of Stock</div>}
                 </div>
             </div>
             
@@ -338,11 +356,23 @@ const BuyerShopView = ({ user, selectedSeller, onBack, addToCart, refreshKey,tar
           </div>
       </div>
 
-      <div style={{ display: 'flex', gap: '15px', marginBottom: '20px', background: '#fff', padding: '15px', borderBottom: '1px solid #f0f0f0' }}>
-          <input placeholder="🔍 Search by name, brand, or description..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} style={{ flex: 1, padding: '10px 15px', border: '1px solid #ccc', borderRadius: '4px', fontSize: '14px', outline: 'none' }} />
-          <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)} style={{ padding: '10px', border: '1px solid #ccc', borderRadius: '4px', fontSize: '14px', outline: 'none' }}>
+      <div style={{ display: 'flex', gap: '15px', marginBottom: '20px', background: '#fff', padding: '15px', borderBottom: '1px solid #f0f0f0', flexWrap: 'wrap' }}>
+          <input placeholder="🔍 Search by name, brand, or description..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} style={{ flex: 2, padding: '10px 15px', border: '1px solid #ccc', borderRadius: '4px', fontSize: '14px', outline: 'none', minWidth: '200px' }} />
+          
+          <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)} style={{ flex: 1, padding: '10px', border: '1px solid #ccc', borderRadius: '4px', fontSize: '14px', outline: 'none', minWidth: '150px' }}>
               <option value="">All Categories</option>
               {categories.map((cat, i) => <option key={i} value={cat}>{cat}</option>)}
+          </select>
+
+          {/* 🔥 NEW DROP DOWN: Sorting */}
+          <select 
+            value={sortBy} 
+            onChange={(e) => setSortBy(e.target.value)} 
+            style={{ flex: 1, padding: '10px', border: '1px solid #2874f0', borderRadius: '4px', fontSize: '14px', outline: 'none', minWidth: '150px', cursor: 'pointer', fontWeight: 'bold', color: '#2874f0' }}
+          >
+              <option value="newest">Newest First</option>
+              <option value="priceLow">Price: Low to High</option>
+              <option value="priceHigh">Price: High to Low</option>
           </select>
       </div>
 
@@ -351,47 +381,50 @@ const BuyerShopView = ({ user, selectedSeller, onBack, addToCart, refreshKey,tar
             <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '60px', color: '#878787' }}><h3>No products match your search.</h3></div>
         ) : (
             filteredProducts.map((p, i) => {
-              const images = getImages(p.imageUrl);
+              const images = getImages(p.imageUrl || p.ImageUrl);
               const thumb = images.length > 0 ? images[0] : 'https://via.placeholder.com/240x320';
-              const discount = p.originalPrice > p.price ? Math.round(((p.originalPrice - p.price) / p.originalPrice) * 100) : 0;
+              const pPrice = p.price || p.Price;
+              const pOrigPrice = p.originalPrice || p.OriginalPrice;
+              const discount = pOrigPrice > pPrice ? Math.round(((pOrigPrice - pPrice) / pOrigPrice) * 100) : 0;
+              const pStock = Number(p.qty || p.Stock || 0);
 
               return (
                   <div 
                       key={i} 
                       onClick={() => { setSelectedProduct(p); setActiveImageIndex(0); }}
-                      style={{ background: 'white', cursor: 'pointer', transition: 'box-shadow 0.2s ease', display: 'flex', flexDirection: 'column', position: 'relative' }}
+                      style={{ background: 'white', cursor: 'pointer', transition: 'box-shadow 0.2s ease', display: 'flex', flexDirection: 'column', position: 'relative', border: '1px solid #eee' }}
                       onMouseOver={(e) => e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)'}
                       onMouseOut={(e) => e.currentTarget.style.boxShadow = 'none'}
                   >
                       {/* 🔥 NEW: Wishlist Icon on Listing Card */}
                       <div 
-                          onClick={(e) => handleWishlistToggle(e, p.id)} 
+                          onClick={(e) => handleWishlistToggle(e, p.id || p.ProductId)} 
                           style={{ position: 'absolute', top: 10, right: 10, cursor: 'pointer', fontSize: '20px', zIndex: 10, background: 'rgba(255,255,255,0.8)', borderRadius: '50%', width: '32px', height: '32px', display: 'flex', justifyContent: 'center', alignItems: 'center' }}
                       >
-                          {wishlistIds.includes(p.id) ? '❤️' : '🤍'}
+                          {wishlistIds.includes(p.id || p.ProductId) ? '❤️' : '🤍'}
                       </div>
 
                       <div style={{ width: '100%', aspectRatio: '3/4', background: '#f9f9f9', display: 'flex', justifyContent: 'center', alignItems: 'center', overflow: 'hidden' }}>
-                          <img src={thumb} alt={p.name} style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: p.qty <= 0 ? 0.5 : 1 }} />
+                          <img src={thumb} alt={p.name} style={{ width: '100%', height: '100%', objectFit: 'contain', opacity: pStock <= 0 ? 0.5 : 1 }} />
                       </div>
                       
-                      <div style={{ padding: '12px 10px', display: 'flex', flexDirection: 'column', flex: 1, opacity: p.qty <= 0 ? 0.6 : 1 }}>
-                          <div style={{ color: '#878787', fontSize: '13px', fontWeight: '500', marginBottom: '4px', textTransform: 'uppercase' }}>{p.brand || p.category || 'Generic'}</div>
-                          <div style={{ color: '#212121', fontSize: '14px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginBottom: '8px' }} title={p.name}>{p.name}</div>
+                      <div style={{ padding: '12px 10px', display: 'flex', flexDirection: 'column', flex: 1, opacity: pStock <= 0 ? 0.6 : 1 }}>
+                          <div style={{ color: '#878787', fontSize: '13px', fontWeight: '500', marginBottom: '4px', textTransform: 'uppercase' }}>{p.brand || p.Brand || p.category || p.Category || 'Generic'}</div>
+                          <div style={{ color: '#212121', fontSize: '14px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginBottom: '8px' }} title={p.name || p.Name}>{p.name || p.Name}</div>
                           
                           <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', marginTop: 'auto' }}>
-                              <span style={{ fontSize: '16px', fontWeight: '500', color: '#212121' }}>₹{p.price}</span>
+                              <span style={{ fontSize: '16px', fontWeight: 'bold', color: '#212121' }}>₹{pPrice}</span>
                               {discount > 0 && (
                                   <>
-                                      <span style={{ fontSize: '13px', color: '#878787', textDecoration: 'line-through' }}>₹{p.originalPrice}</span>
+                                      <span style={{ fontSize: '13px', color: '#878787', textDecoration: 'line-through' }}>₹{pOrigPrice}</span>
                                       <span style={{ fontSize: '13px', color: '#388e3c', fontWeight: '500' }}>{discount}% off</span>
                                   </>
                               )}
                           </div>
                           
-                          {Number(p.qty) <= 0 
-                              ? <div style={{ color: '#dc3545', fontSize: '13px', marginTop: '6px', fontWeight: 'bold' }}>Out of Stock</div>
-                              : Number(p.qty) <= 5 && <div style={{ color: '#d32f2f', fontSize: '13px', marginTop: '6px', fontWeight: '500' }}>Only few left</div>
+                          {pStock <= 0 
+                              ? <div style={{ color: '#dc3545', fontSize: '12px', marginTop: '6px', fontWeight: 'bold' }}>Out of Stock</div>
+                              : pStock <= 5 && <div style={{ color: '#d32f2f', fontSize: '13px', marginTop: '6px', fontWeight: '500' }}>Only few left</div>
                           }
                       </div>
                   </div>

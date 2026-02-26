@@ -60,7 +60,7 @@ const CartSidebar = ({ isOpen, onClose, cartItems, onRemove, onCheckout, isVerif
                     {/* 🔥 NEW: Inline Red Warning Text */}
                     {isMaxReached && (
                         <div style={{ fontSize: '11px', color: '#dc3545', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                            ⚠️ Stock Limit Reached! <br/> Only {maxLimit} units of this item are available.
+                            ⚠️ Only {maxLimit} units are available in stock.
                         </div>
                     )}
                   </div>
