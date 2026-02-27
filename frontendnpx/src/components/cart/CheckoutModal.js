@@ -12,7 +12,6 @@ const INDIAN_STATES = [
     "Tripura", "Uttar Pradesh", "Uttarakhand", "West Bengal"
 ];
 
-// 🔥 EXTENSION: Added onViewOrders prop
 const CheckoutModal = ({ isOpen, onClose, cartItems = [], cartTotal, onConfirmOrder, userId, onViewOrders }) => {
     
     // States for handling saved addresses
@@ -28,15 +27,21 @@ const CheckoutModal = ({ isOpen, onClose, cartItems = [], cartTotal, onConfirmOr
     const [isPlacingOrder, setIsPlacingOrder] = useState(false);
     const [isFetchingPin, setIsFetchingPin] = useState(false);
     
-    // 🔥 NEW: orderId now triggers the Success View
     const [orderId, setOrderId] = useState(null);
     const [error, setError] = useState('');
 
-    // States to handle ratings in the checkout modal
     const [ratings, setRatings] = useState({});
     const [hoveredStar, setHoveredStar] = useState({});
 
-    // 🔥 NEW: Payment Options Array
+    // 🔥 ADDED: Viewport detection for mobile responsiveness
+    const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+
+    useEffect(() => {
+        const handleResize = () => setIsMobile(window.innerWidth < 768);
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
+    }, []);
+
     const paymentOptions = [
         { id: 'UPI', label: 'UPI / QR', desc: 'Google Pay, PhonePe, Paytm' },
         { id: 'CARD', label: 'Credit / Debit / ATM Card', desc: 'All major cards supported' },
@@ -135,7 +140,8 @@ const CheckoutModal = ({ isOpen, onClose, cartItems = [], cartTotal, onConfirmOr
             }
             formattedAddress = `${formData.fullName} | Ph: +91 ${formData.phone}\n${formData.addressLine}\n${formData.city}, Dist: ${formData.district}, ${formData.state} - ${formData.pincode}\nPayment: ${paymentMethod}`;
         } else {
-            const addr = savedAddresses.find(a => a.AddressId === selectedAddressId);
+            // 🔥 FIX 1: Safe string comparison ensures the address matches exactly, bringing back the preview box!
+            const addr = savedAddresses.find(a => String(a.AddressId) === String(selectedAddressId));
             if (!addr) return setError("Please select a valid address.");
             formattedAddress = `${addr.FullName} | Ph: +91 ${addr.Phone}\n${addr.AddressLine}\n${addr.City}, Dist: ${addr.District}, ${addr.State} - ${addr.Pincode}\nPayment: ${paymentMethod}`;
         }
@@ -144,10 +150,7 @@ const CheckoutModal = ({ isOpen, onClose, cartItems = [], cartTotal, onConfirmOr
         setIsPlacingOrder(true);
 
         try {
-            // Pass BOTH the address AND the ratings object back to App.js
             const newOrderId = await onConfirmOrder(formattedAddress, ratings);
-            
-            // 🔥 NEW: Trigger Success View instead of closing
             setOrderId(newOrderId); 
         } catch (err) {
             setError(err.message || "Failed to place order. Please try again.");
@@ -157,224 +160,240 @@ const CheckoutModal = ({ isOpen, onClose, cartItems = [], cartTotal, onConfirmOr
     };
 
     return (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1300, padding: '20px' }}>
-            <div style={{ backgroundColor: 'white', borderRadius: '12px', width: '100%', maxWidth: '1000px', maxHeight: '90vh', overflowY: 'auto', position: 'relative', boxShadow: '0 20px 40px rgba(0,0,0,0.4)', animation: 'fadeIn 0.3s ease' }}>
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex', justifyContent: 'center', alignItems: isMobile ? 'flex-end' : 'center', zIndex: 1300, padding: isMobile ? '0' : '20px' }}>
+            {/* 🔥 FIX 2: Layout explicitly isolates scroll area, locking the Pay button to the bottom on mobile */}
+            <div style={{ backgroundColor: 'white', borderRadius: isMobile ? '16px 16px 0 0' : '12px', width: '100%', maxWidth: '1000px', maxHeight: isMobile ? '95vh' : '90vh', overflow: 'hidden', display: 'flex', flexDirection: 'column', position: 'relative', boxShadow: '0 -10px 40px rgba(0,0,0,0.2)' }}>
                 
+                {/* Header */}
                 {!orderId && (
-                    <button onClick={onClose} style={{ position: 'absolute', top: '15px', right: '20px', background: 'none', border: 'none', fontSize: '28px', cursor: 'pointer', color: '#555', zIndex: 10 }}>&times;</button>
+                    <div style={{ background: 'white', padding: '15px 20px', borderBottom: '1px solid #eee', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
+                        <h2 style={{ margin: 0, fontSize: '18px', display: 'flex', alignItems: 'center', gap: '8px' }}>🔒 Secure Checkout</h2>
+                        <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: '28px', cursor: 'pointer', color: '#555', padding: '0 5px' }}>&times;</button>
+                    </div>
                 )}
 
-                {/* --- 🔥 NEW: SUCCESS STATE VIEW --- */}
+                {/* --- SUCCESS STATE VIEW --- */}
                 {orderId ? (
-                    <div style={{ textAlign: 'center', padding: '50px 20px' }}>
+                    <div style={{ textAlign: 'center', padding: isMobile ? '30px 15px' : '50px 20px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center' }}>
                         <div style={{ fontSize: '70px', marginBottom: '15px', animation: 'bounce 0.5s ease' }}>🎉</div>
-                        <h1 style={{ color: '#28a745', margin: '0 0 10px 0' }}>Order Confirmed!</h1>
+                        <h1 style={{ color: '#28a745', margin: '0 0 10px 0', fontSize: isMobile ? '24px' : '32px' }}>Order Confirmed!</h1>
                         <p style={{ color: '#555', fontSize: '15px', marginBottom: '5px' }}>Your order has been successfully placed.</p>
                         <p style={{ color: '#888', fontSize: '13px', marginBottom: '25px' }}>Your ratings have been saved.</p>
                         
-                        <div style={{ background: '#f8f9fa', border: '2px dashed #28a745', padding: '20px', borderRadius: '8px', display: 'inline-block', marginBottom: '15px', minWidth: '250px' }}>
+                        <div style={{ background: '#f8f9fa', border: '2px dashed #28a745', padding: '20px', borderRadius: '8px', display: 'inline-block', marginBottom: '15px', minWidth: '250px', width: isMobile ? '100%' : 'auto', boxSizing: 'border-box' }}>
                             <span style={{ display: 'block', fontSize: '12px', color: '#666', textTransform: 'uppercase', letterSpacing: '1px' }}>Tracking ID</span>
                             <strong style={{ fontSize: '28px', color: '#333' }}>#{orderId}</strong>
                         </div>
 
-                        <div style={{ background: '#e8f5e9', color: '#155724', padding: '12px', borderRadius: '8px', display: 'inline-block', marginBottom: '30px', border: '1px solid #c3e6cb' }}>
+                        <div style={{ background: '#e8f5e9', color: '#155724', padding: '12px', borderRadius: '8px', display: 'inline-block', marginBottom: '30px', border: '1px solid #c3e6cb', width: isMobile ? '100%' : 'auto', boxSizing: 'border-box' }}>
                             <span style={{ fontSize: '16px' }}>📦</span> <strong>Estimated Delivery:</strong>{' '}
                             {new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toLocaleDateString('en-IN', { weekday: 'short', month: 'short', day: 'numeric' })}
                         </div>
 
-                        <div style={{ display: 'flex', gap: '15px', justifyContent: 'center' }}>
-                            <button onClick={onClose} style={{ padding: '12px 25px', border: '1px solid #007bff', background: 'white', color: '#007bff', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', fontSize: '15px', transition: 'all 0.2s' }}>
+                        <div style={{ display: 'flex', gap: '15px', justifyContent: 'center', flexDirection: isMobile ? 'column' : 'row', width: isMobile ? '100%' : 'auto' }}>
+                            <button onClick={onClose} style={{ padding: '12px 25px', border: '1px solid #007bff', background: 'white', color: '#007bff', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', fontSize: '15px', transition: 'all 0.2s', width: isMobile ? '100%' : 'auto' }}>
                                 Continue Shopping
                             </button>
-                            <button onClick={() => onViewOrders && onViewOrders()} style={{ padding: '12px 25px', border: 'none', background: '#007bff', color: 'white', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', fontSize: '15px', boxShadow: '0 4px 6px rgba(0, 123, 255, 0.2)' }}>
+                            <button onClick={() => onViewOrders && onViewOrders()} style={{ padding: '12px 25px', border: 'none', background: '#007bff', color: 'white', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', fontSize: '15px', boxShadow: '0 4px 6px rgba(0, 123, 255, 0.2)', width: isMobile ? '100%' : 'auto' }}>
                                 Track My Order
                             </button>
                         </div>
                     </div>
                 ) : (
-                    <div style={{ display: 'flex', flexWrap: 'wrap' }}>
-                        
-                        {/* LEFT COLUMN: FORM */}
-                        <div style={{ flex: '1 1 500px', padding: '40px' }}>
-                            <h2 style={{ marginTop: 0, marginBottom: '25px', color: '#333', borderBottom: '2px solid #eee', paddingBottom: '15px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                🔒 Secure Checkout
-                            </h2>
+                    <>
+                        {/* 🔥 FIX 3: Scrollable body ensuring form is always above order summary */}
+                        <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: isMobile ? 'column' : 'row', overflowX: 'hidden' }}>
                             
-                            {error && (
-                                <div style={{ background: '#f8d7da', color: '#721c24', padding: '12px', borderRadius: '6px', marginBottom: '20px', fontSize: '14px', border: '1px solid #f5c6cb' }}>
-                                    {error}
-                                </div>
-                            )}
+                            {/* LEFT COLUMN: FORM */}
+                            <div style={{ flex: '1 1 100%', padding: isMobile ? '20px' : '40px', boxSizing: 'border-box' }}>
+                                
+                                {error && (
+                                    <div style={{ background: '#f8d7da', color: '#721c24', padding: '12px', borderRadius: '6px', marginBottom: '20px', fontSize: '14px', border: '1px solid #f5c6cb' }}>
+                                        {error}
+                                    </div>
+                                )}
 
-                            <h4 style={{ color: '#555', marginBottom: '15px' }}>1. Shipping Address</h4>
-                            
-                            {isLoadingAddresses ? (
-                                <div style={{ padding: '20px', textAlign: 'center', color: '#888' }}>Loading saved addresses...</div>
-                            ) : (
-                                <div style={{ marginBottom: '20px' }}>
-                                    {savedAddresses.map(addr => (
-                                        <div 
-                                            key={addr.AddressId} 
-                                            onClick={() => setSelectedAddressId(addr.AddressId)}
-                                            style={{ 
-                                                border: selectedAddressId === addr.AddressId ? '2px solid #2874f0' : '1px solid #e0e0e0', 
-                                                borderRadius: '6px', padding: '15px', marginBottom: '10px', cursor: 'pointer', 
-                                                background: selectedAddressId === addr.AddressId ? '#f0f5ff' : 'white',
-                                                transition: 'all 0.2s ease'
-                                            }}
+                                <h4 style={{ color: '#555', marginBottom: '15px', marginTop: 0 }}>1. Shipping Address</h4>
+                                
+                                {isLoadingAddresses ? (
+                                    <div style={{ padding: '20px', textAlign: 'center', color: '#888' }}>Loading saved addresses...</div>
+                                ) : (
+                                    <div style={{ marginBottom: '20px' }}>
+                                        <select 
+                                            value={selectedAddressId}
+                                            onChange={(e) => setSelectedAddressId(e.target.value)}
+                                            style={{ ...inputStyle, marginBottom: '15px', background: '#f8f9fa', cursor: 'pointer', fontWeight: '500', color: '#333' }}
                                         >
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                                <input type="radio" checked={selectedAddressId === addr.AddressId} readOnly style={{ accentColor: '#2874f0', width: '16px', height: '16px' }} />
-                                                <span style={{ fontWeight: 'bold', fontSize: '15px', color: '#333' }}>{addr.FullName}</span>
-                                                <span style={{ background: '#e0e0e0', padding: '2px 8px', borderRadius: '4px', fontSize: '10px', fontWeight: 'bold' }}>HOME</span>
+                                            {savedAddresses.map(addr => (
+                                                <option key={addr.AddressId} value={addr.AddressId}>
+                                                    {addr.FullName} — {addr.City}, {addr.State} ({addr.Pincode})
+                                                </option>
+                                            ))}
+                                            <option value="NEW">+ Add a New Address</option>
+                                        </select>
+
+                                        {selectedAddressId !== 'NEW' && savedAddresses.length > 0 && (
+                                            <div style={{ padding: '15px', background: '#f0f5ff', border: '1px solid #2874f0', borderRadius: '6px', transition: 'all 0.2s ease' }}>
+                                                {(() => {
+                                                    // Safely compare using String to ensure match works
+                                                    const addr = savedAddresses.find(a => String(a.AddressId) === String(selectedAddressId));
+                                                    if(!addr) return null;
+                                                    return (
+                                                        <>
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
+                                                                <span style={{ fontWeight: 'bold', fontSize: '15px', color: '#333' }}>{addr.FullName}</span>
+                                                                <span style={{ background: '#e0e0e0', padding: '2px 8px', borderRadius: '4px', fontSize: '10px', fontWeight: 'bold' }}>HOME</span>
+                                                            </div>
+                                                            <div style={{ fontSize: '14px', color: '#555', lineHeight: '1.5' }}>
+                                                                {addr.AddressLine}, {addr.City}, {addr.State} - <strong>{addr.Pincode}</strong><br/>
+                                                                Mobile: <strong>{addr.Phone}</strong>
+                                                            </div>
+                                                        </>
+                                                    )
+                                                })()}
                                             </div>
-                                            <div style={{ marginLeft: '26px', fontSize: '14px', color: '#555', marginTop: '6px', lineHeight: '1.5' }}>
-                                                {addr.AddressLine}, {addr.City}, {addr.State} - <strong>{addr.Pincode}</strong>
-                                                <br/>Mobile: <strong>{addr.Phone}</strong>
+                                        )}
+                                    </div>
+                                )}
+
+                                {selectedAddressId === 'NEW' && (
+                                    <div style={{ background: '#f9f9f9', padding: '20px', borderRadius: '8px', border: '1px solid #eee' }}>
+                                        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '15px', marginBottom: '15px' }}>
+                                            <div>
+                                                <label style={labelStyle}>Full Name *</label>
+                                                <input type="text" name="fullName" value={formData.fullName} onChange={handleInputChange} style={inputStyle} placeholder="John Doe" />
                                             </div>
-                                        </div>
-                                    ))}
-
-                                    {/* Add New Address Option */}
-                                    <div 
-                                        onClick={() => setSelectedAddressId('NEW')}
-                                        style={{ 
-                                            border: selectedAddressId === 'NEW' ? '2px solid #2874f0' : '1px solid #e0e0e0', 
-                                            borderRadius: '6px', padding: '15px', cursor: 'pointer', 
-                                            background: selectedAddressId === 'NEW' ? '#f0f5ff' : 'white', 
-                                            display: 'flex', alignItems: 'center', gap: '10px',
-                                            transition: 'all 0.2s ease',
-                                            marginBottom: selectedAddressId === 'NEW' ? '15px' : '0'
-                                        }}
-                                    >
-                                        <input type="radio" checked={selectedAddressId === 'NEW'} readOnly style={{ accentColor: '#2874f0', width: '16px', height: '16px' }} />
-                                        <span style={{ fontWeight: 'bold', color: selectedAddressId === 'NEW' ? '#2874f0' : '#333', fontSize: '15px' }}>+ Add a New Address</span>
-                                    </div>
-                                </div>
-                            )}
-
-                            {selectedAddressId === 'NEW' && (
-                                <div style={{ background: '#f9f9f9', padding: '20px', borderRadius: '8px', border: '1px solid #eee' }}>
-                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginBottom: '15px' }}>
-                                        <div>
-                                            <label style={labelStyle}>Full Name *</label>
-                                            <input type="text" name="fullName" value={formData.fullName} onChange={handleInputChange} style={inputStyle} placeholder="John Doe" />
-                                        </div>
-                                        <div>
-                                            <label style={labelStyle}>Mobile Number *</label>
-                                            <input type="tel" name="phone" value={formData.phone} onChange={handleInputChange} style={{...inputStyle, borderColor: formData.phone && formData.phone.length < 10 ? '#ffc107' : '#ccc'}} placeholder="10-digit number" />
-                                        </div>
-                                    </div>
-                                    
-                                    <div style={{ marginBottom: '15px' }}>
-                                        <label style={labelStyle}>Street Address *</label>
-                                        <input type="text" name="addressLine" value={formData.addressLine} onChange={handleInputChange} style={inputStyle} placeholder="House/Flat No., Building Name, Street" />
-                                    </div>
-
-                                    <div style={{ marginBottom: '15px', position: 'relative' }}>
-                                        <label style={labelStyle}>PIN Code *</label>
-                                        <input type="text" name="pincode" value={formData.pincode} onChange={handleInputChange} style={{...inputStyle, width: '50%'}} placeholder="560001" />
-                                        {isFetchingPin && <span style={{ position: 'absolute', left: '53%', top: '38px', fontSize: '12px', color: '#007bff', fontWeight: 'bold' }}>⏳ Fetching location...</span>}
-                                    </div>
-
-                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1.2fr', gap: '15px', marginBottom: '30px' }}>
-                                        <div>
-                                            <label style={labelStyle}>City/Block *</label>
-                                            <input type="text" name="city" value={formData.city} onChange={handleInputChange} style={inputStyle} placeholder="Bengaluru" />
-                                        </div>
-                                        <div>
-                                            <label style={labelStyle}>District</label>
-                                            <input type="text" name="district" value={formData.district} onChange={handleInputChange} style={inputStyle} placeholder="Bengaluru Urban" />
-                                        </div>
-                                        <div>
-                                            <label style={labelStyle}>State *</label>
-                                            <select name="state" value={formData.state} onChange={handleInputChange} style={{...inputStyle, cursor: 'pointer', backgroundColor: 'white', padding: '11px'}}>
-                                                <option value="" disabled>Select State</option>
-                                                {INDIAN_STATES.map(state => <option key={state} value={state}>{state}</option>)}
-                                            </select>
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* 🔥 NEW: PAYMENT OPTIONS */}
-                            <h4 style={{ color: '#555', marginBottom: '15px', borderTop: '1px solid #eee', paddingTop: '20px' }}>2. Payment Method</h4>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                                {paymentOptions.map(opt => (
-                                    <label key={opt.id} style={{ border: `1px solid ${paymentMethod === opt.id ? '#28a745' : '#ccc'}`, borderRadius: '8px', padding: '15px', background: paymentMethod === opt.id ? '#f8fff9' : '#fff', display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', transition: 'all 0.2s' }}>
-                                        <input type="radio" name="payment" value={opt.id} checked={paymentMethod === opt.id} onChange={(e) => setPaymentMethod(e.target.value)} style={{ accentColor: '#28a745', width: '18px', height: '18px', cursor: 'pointer' }} />
-                                        <div>
-                                            <strong style={{ display: 'block', color: '#333' }}>{opt.label}</strong>
-                                            <span style={{ fontSize: '12px', color: '#666' }}>{opt.desc}</span>
-                                        </div>
-                                    </label>
-                                ))}
-                            </div>
-                        </div>
-
-                        {/* RIGHT COLUMN: ORDER SUMMARY & RATING */}
-                        <div style={{ flex: '1 1 350px', background: '#f8f9fa', padding: '40px', borderLeft: '1px solid #eee' }}>
-                            <h3 style={{ marginTop: 0, marginBottom: '25px', color: '#333' }}>Order Summary & Review</h3>
-                            
-                            <div style={{ maxHeight: '350px', overflowY: 'auto', paddingRight: '10px', marginBottom: '20px' }}>
-                                {cartItems.map((item, idx) => (
-                                    <div key={idx} style={{ background: 'white', borderRadius: '8px', padding: '15px', marginBottom: '15px', border: '1px solid #e9ecef', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
-                                        <div style={{ display: 'flex', gap: '15px', marginBottom: '10px' }}>
-                                            <div style={{ width: '50px', height: '50px', background: '#eee', borderRadius: '6px', border: '1px solid #ddd', overflow: 'hidden' }}>
-                                                <img src={parseImages(item.imageUrl)[0]} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                                            </div>
-                                            <div style={{ flex: 1 }}>
-                                                <div style={{ fontWeight: 'bold', fontSize: '14px', color: '#333', marginBottom: '4px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '180px' }}>{item.name}</div>
-                                                <div style={{ fontSize: '12px', color: '#888' }}>Qty: {item.qty} | ₹{item.price * item.qty}</div>
+                                            <div>
+                                                <label style={labelStyle}>Mobile Number *</label>
+                                                <input type="tel" name="phone" value={formData.phone} onChange={handleInputChange} style={{...inputStyle, borderColor: formData.phone && formData.phone.length < 10 ? '#ffc107' : '#ccc'}} placeholder="10-digit number" />
                                             </div>
                                         </div>
                                         
-                                        <div style={{ borderTop: '1px dashed #eee', paddingTop: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                            <span style={{ fontSize: '12px', color: '#666', fontWeight: 'bold' }}>Rate Item:</span>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                                {[1, 2, 3, 4, 5].map(star => (
-                                                    <span 
-                                                        key={star}
-                                                        onMouseEnter={() => setHoveredStar({...hoveredStar, [item.id]: star})}
-                                                        onMouseLeave={() => setHoveredStar({...hoveredStar, [item.id]: 0})}
-                                                        onClick={() => setRatings({...ratings, [item.id]: star})}
-                                                        style={{ 
-                                                            fontSize: '20px', cursor: 'pointer', lineHeight: '1', transition: 'color 0.2s',
-                                                            color: star <= (hoveredStar[item.id] || ratings[item.id]) ? '#ff9f00' : '#e0e0e0' 
-                                                        }}
-                                                    >
-                                                        ★
-                                                    </span>
-                                                ))}
+                                        <div style={{ marginBottom: '15px' }}>
+                                            <label style={labelStyle}>Street Address *</label>
+                                            <input type="text" name="addressLine" value={formData.addressLine} onChange={handleInputChange} style={inputStyle} placeholder="House/Flat No., Building Name, Street" />
+                                        </div>
+
+                                        <div style={{ marginBottom: '15px', position: 'relative' }}>
+                                            <label style={labelStyle}>PIN Code *</label>
+                                            <input type="text" name="pincode" value={formData.pincode} onChange={handleInputChange} style={{...inputStyle, width: '50%'}} placeholder="560001" />
+                                            {isFetchingPin && <span style={{ position: 'absolute', left: '53%', top: '38px', fontSize: '12px', color: '#007bff', fontWeight: 'bold' }}>⏳ Fetching...</span>}
+                                        </div>
+
+                                        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr 1.2fr', gap: '15px', marginBottom: isMobile ? '10px' : '30px' }}>
+                                            <div>
+                                                <label style={labelStyle}>City/Block *</label>
+                                                <input type="text" name="city" value={formData.city} onChange={handleInputChange} style={inputStyle} placeholder="Bengaluru" />
+                                            </div>
+                                            <div>
+                                                <label style={labelStyle}>District</label>
+                                                <input type="text" name="district" value={formData.district} onChange={handleInputChange} style={inputStyle} placeholder="Bengaluru Urban" />
+                                            </div>
+                                            <div>
+                                                <label style={labelStyle}>State *</label>
+                                                <select name="state" value={formData.state} onChange={handleInputChange} style={{...inputStyle, cursor: 'pointer', backgroundColor: 'white', padding: '11px'}}>
+                                                    <option value="" disabled>Select State</option>
+                                                    {INDIAN_STATES.map(state => <option key={state} value={state}>{state}</option>)}
+                                                </select>
                                             </div>
                                         </div>
                                     </div>
-                                ))}
-                            </div>
+                                )}
 
-                            <div style={{ borderBottom: '1px solid #dee2e6', paddingBottom: '15px', marginBottom: '15px' }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', color: '#555', fontSize: '15px' }}>
-                                    <span>Subtotal</span><span>Rs. {cartTotal}</span>
+                                <h4 style={{ color: '#555', marginBottom: '15px', borderTop: '1px solid #eee', paddingTop: '20px' }}>2. Payment Method</h4>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                    {paymentOptions.map(opt => (
+                                        <label key={opt.id} style={{ border: `1px solid ${paymentMethod === opt.id ? '#28a745' : '#ccc'}`, borderRadius: '8px', padding: '15px', background: paymentMethod === opt.id ? '#f8fff9' : '#fff', display: 'flex', alignItems: 'flex-start', gap: '10px', cursor: 'pointer', transition: 'all 0.2s' }}>
+                                            <input type="radio" name="payment" value={opt.id} checked={paymentMethod === opt.id} onChange={(e) => setPaymentMethod(e.target.value)} style={{ accentColor: '#28a745', width: '18px', height: '18px', cursor: 'pointer', marginTop: '2px' }} />
+                                            <div>
+                                                <strong style={{ display: 'block', color: '#333' }}>{opt.label}</strong>
+                                                <span style={{ fontSize: '12px', color: '#666' }}>{opt.desc}</span>
+                                            </div>
+                                        </label>
+                                    ))}
                                 </div>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', color: '#555', fontSize: '15px' }}>
-                                    <span>Shipping</span><span style={{ color: '#28a745', fontWeight: 'bold' }}>FREE</span>
+                            </div>
+
+                            {/* RIGHT COLUMN: ORDER SUMMARY & RATING */}
+                            <div style={{ width: isMobile ? '100%' : '400px', background: '#f8f9fa', padding: isMobile ? '20px' : '40px', borderLeft: isMobile ? 'none' : '1px solid #eee', borderTop: isMobile ? '1px solid #eee' : 'none', boxSizing: 'border-box' }}>
+                                <h3 style={{ marginTop: 0, marginBottom: '20px', color: '#333' }}>Order Summary</h3>
+                                
+                                <div style={{ paddingRight: isMobile ? '0' : '10px', marginBottom: '20px' }}>
+                                    {cartItems.map((item, idx) => (
+                                        <div key={idx} style={{ background: 'white', borderRadius: '8px', padding: '15px', marginBottom: '15px', border: '1px solid #e9ecef', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
+                                            <div style={{ display: 'flex', gap: '15px', marginBottom: '10px' }}>
+                                                <div style={{ width: '50px', height: '50px', background: '#eee', borderRadius: '6px', border: '1px solid #ddd', overflow: 'hidden', flexShrink: 0 }}>
+                                                    <img src={parseImages(item.imageUrl)[0]} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                                </div>
+                                                <div style={{ flex: 1, overflow: 'hidden' }}>
+                                                    <div style={{ fontWeight: 'bold', fontSize: '14px', color: '#333', marginBottom: '4px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.name}</div>
+                                                    <div style={{ fontSize: '12px', color: '#888' }}>Qty: {item.qty} | ₹{item.price * item.qty}</div>
+                                                </div>
+                                            </div>
+                                            
+                                            <div style={{ borderTop: '1px dashed #eee', paddingTop: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                <span style={{ fontSize: '12px', color: '#666', fontWeight: 'bold' }}>Rate Item:</span>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                    {[1, 2, 3, 4, 5].map(star => (
+                                                        <span 
+                                                            key={star}
+                                                            onMouseEnter={() => setHoveredStar({...hoveredStar, [item.id]: star})}
+                                                            onMouseLeave={() => setHoveredStar({...hoveredStar, [item.id]: 0})}
+                                                            onClick={() => setRatings({...ratings, [item.id]: star})}
+                                                            style={{ 
+                                                                fontSize: '20px', cursor: 'pointer', lineHeight: '1', transition: 'color 0.2s',
+                                                                color: star <= (hoveredStar[item.id] || ratings[item.id]) ? '#ff9f00' : '#e0e0e0' 
+                                                            }}
+                                                        >
+                                                            ★
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
                                 </div>
-                            </div>
 
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px' }}>
-                                <span style={{ fontSize: '18px', fontWeight: 'bold', color: '#333' }}>Total</span>
-                                <span style={{ fontSize: '24px', fontWeight: 'bold', color: '#007bff' }}>Rs. {cartTotal}</span>
-                            </div>
+                                <div style={{ borderBottom: '1px solid #dee2e6', paddingBottom: '15px', marginBottom: '15px' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', color: '#555', fontSize: '15px' }}>
+                                        <span>Subtotal</span><span>Rs. {cartTotal}</span>
+                                    </div>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', color: '#555', fontSize: '15px' }}>
+                                        <span>Shipping</span><span style={{ color: '#28a745', fontWeight: 'bold' }}>FREE</span>
+                                    </div>
+                                </div>
 
-                            <button 
-                                onClick={handleSubmit} 
-                                disabled={isPlacingOrder}
-                                style={{ width: '100%', padding: '16px', border: 'none', background: isPlacingOrder ? '#6c757d' : '#28a745', color: 'white', borderRadius: '8px', fontWeight: 'bold', cursor: isPlacingOrder ? 'wait' : 'pointer', fontSize: '18px', transition: 'background 0.2s', boxShadow: '0 4px 6px rgba(40, 167, 69, 0.2)' }}
-                            >
-                                {isPlacingOrder ? 'Processing Order...' : `Pay Rs. ${cartTotal}`}
-                            </button>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: isMobile ? '10px' : '30px' }}>
+                                    <span style={{ fontSize: '18px', fontWeight: 'bold', color: '#333' }}>Total</span>
+                                    <span style={{ fontSize: '24px', fontWeight: 'bold', color: '#007bff' }}>Rs. {cartTotal}</span>
+                                </div>
+
+                                {/* Desktop Pay Button (Hidden on Mobile) */}
+                                {!isMobile && (
+                                    <button 
+                                        onClick={handleSubmit} 
+                                        disabled={isPlacingOrder}
+                                        style={{ width: '100%', padding: '16px', border: 'none', background: isPlacingOrder ? '#6c757d' : '#fb641b', color: 'white', borderRadius: '8px', fontWeight: 'bold', cursor: isPlacingOrder ? 'wait' : 'pointer', fontSize: '18px', transition: 'background 0.2s', boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)' }}
+                                    >
+                                        {isPlacingOrder ? 'Processing Order...' : `Pay Rs. ${cartTotal}`}
+                                    </button>
+                                )}
+                            </div>
                         </div>
-                    </div>
+
+                        {/* 🔥 FIX 4: Dedicated Mobile Sticky Footer - Always visible at the bottom of the screen! */}
+                        {isMobile && (
+                            <div style={{ flexShrink: 0, padding: '15px', background: 'white', borderTop: '1px solid #e0e0e0', boxShadow: '0 -4px 10px rgba(0,0,0,0.05)' }}>
+                                <button 
+                                    onClick={handleSubmit} 
+                                    disabled={isPlacingOrder}
+                                    style={{ width: '100%', padding: '16px', border: 'none', background: isPlacingOrder ? '#6c757d' : '#fb641b', color: 'white', borderRadius: '8px', fontWeight: 'bold', cursor: isPlacingOrder ? 'wait' : 'pointer', fontSize: '18px', transition: 'background 0.2s' }}
+                                >
+                                    {isPlacingOrder ? 'Processing...' : `Pay Rs. ${cartTotal}`}
+                                </button>
+                            </div>
+                        )}
+                    </>
                 )}
             </div>
         </div>

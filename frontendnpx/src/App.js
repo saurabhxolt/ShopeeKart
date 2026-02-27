@@ -40,6 +40,15 @@ function App() {
 
   const [checkoutSession, setCheckoutSession] = useState({ items: [], isBuyNow: false });
 
+  // 🔥 ADDED: Viewport detection for global App layout
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
   // --- GLOBAL SEARCH EFFECT ---
   useEffect(() => {
     const delayDebounceFn = setTimeout(async () => {
@@ -181,7 +190,8 @@ function App() {
   if (!user) return <AuthScreen onUserAuthenticated={setUser} />;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', background: '#f1f3f6' }}>
+    // 🔥 UPDATED: Added width: '100%' and overflowX: 'hidden' to the main container
+    <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', background: '#f1f3f6', width: '100%', overflowX: 'hidden' }}>
       
       <Header 
         user={user}
@@ -194,23 +204,23 @@ function App() {
         openAccountFeature={openAccountFeature}
         cartItems={cartItems}
         onOpenCart={() => setIsCartOpen(true)}
-        // 🔥 UPDATED: Search bar is now hidden when in a specific shop view OR when modals are open
         hideSearch={!!selectedSeller || isAccountModalOpen || isCheckoutModalOpen || isBuyerOrdersOpen}
       />
       
-      <div style={{ padding: '40px', flex: 1 }}>
+      {/* 🔥 UPDATED: Swapped fixed padding for responsive padding (0 on mobile, 40px on desktop) */}
+      <div style={{ padding: isMobile ? '0' : '40px', flex: 1, width: '100%', boxSizing: 'border-box' }}>
           {user.role === 'ADMIN' && <AdminDashboard user={user} />}
           {user.role === 'SELLER' && <SellerDashboard user={user} />}
           
           {user.role === 'BUYER' && (
               <>
                 {globalSearch.trim().length > 1 ? (
-                    <div>
+                    <div style={{ padding: isMobile ? '10px' : '0' }}> {/* Added a tiny bit of padding to search view on mobile so cards don't hit the screen edge */}
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-                            <h2 style={{ margin: 0, color: '#212121' }}>
+                            <h2 style={{ margin: 0, color: '#212121', fontSize: isMobile ? '18px' : '24px' }}>
                                 {isSearching ? '🔍 Searching...' : `Found ${searchResults.length} items for "${globalSearch}"`}
                             </h2>
-                            <button onClick={() => setGlobalSearch('')} style={{ background: 'white', border: '1px solid #ccc', padding: '8px 15px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>✕ Clear Search</button>
+                            <button onClick={() => setGlobalSearch('')} style={{ background: 'white', border: '1px solid #ccc', padding: '8px 15px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>✕ Clear</button>
                         </div>
 
                         {searchResults.length === 0 && !isSearching ? (
@@ -220,7 +230,7 @@ function App() {
                                 <p style={{ color: '#878787' }}>Try different keywords or check your spelling.</p>
                             </div>
                         ) : (
-                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '20px' }}>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', justifyContent: isMobile ? 'space-between' : 'flex-start' }}>
                                 {searchResults.map(product => {
                                     let imgs = [];
                                     try { imgs = JSON.parse(product.ImageUrl); } catch(e) { imgs = [product.ImageUrl]; }
@@ -233,11 +243,11 @@ function App() {
                                                 setTargetProductId(product.id);
                                                 setSelectedSeller({ id: product.sellerId, StoreName: product.StoreName });
                                             }}
-                                            style={{ background: 'white', padding: '15px', borderRadius: '8px', width: '220px', cursor: 'pointer', boxShadow: '0 2px 8px rgba(0,0,0,0.1)', transition: 'transform 0.2s' }}
-                                            onMouseOver={(e) => e.currentTarget.style.transform = 'translateY(-5px)'}
+                                            style={{ background: 'white', padding: '15px', borderRadius: '8px', width: isMobile ? 'calc(50% - 5px)' : '220px', boxSizing: 'border-box', cursor: 'pointer', boxShadow: '0 2px 8px rgba(0,0,0,0.1)', transition: 'transform 0.2s' }}
+                                            onMouseOver={(e) => !isMobile && (e.currentTarget.style.transform = 'translateY(-5px)')}
                                             onMouseOut={(e) => e.currentTarget.style.transform = 'translateY(0)'}
                                         >
-                                            <div style={{ height: '180px', marginBottom: '10px' }}>
+                                            <div style={{ height: isMobile ? '120px' : '180px', marginBottom: '10px' }}>
                                                 <img src={imgs[0]} style={{ width: '100%', height: '100%', objectFit: 'contain' }} alt="" />
                                             </div>
                                             <div style={{ fontWeight: 'bold', fontSize: '14px', height: '40px', overflow: 'hidden' }}>{product.Name}</div>
