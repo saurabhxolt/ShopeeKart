@@ -12,7 +12,13 @@ app.http('LogTraffic', {
     authLevel: 'anonymous',
     handler: async (request, context) => {
         try {
-            const { userId, sellerId, productId, pageType, deviceType } = await request.json();
+            const { userId, sellerId, productId, deviceType } = await request.json();
+
+            // 🔥 ENFORCE THE STRICT RULE: Reject if there is no Product OR no Logged-In User
+            if (!productId || !userId) {
+                // We return 200 so the frontend doesn't throw a console error, but we do NOT log it.
+                return { status: 200, jsonBody: { message: "Ignored: User must be registered and viewing a product." } }; 
+            }
 
             // Extract IP from Azure headers
             const ipAddress = request.headers.get('x-forwarded-for')?.split(':')[0] || '0.0.0.0';
@@ -27,9 +33,10 @@ app.http('LogTraffic', {
                         return resolve({ status: 200, jsonBody: { message: "Silent fail on connection" } });
                     }
 
+                    // We now hardcode 'Product' as the PageType to ensure perfect data
                     const query = `
                         INSERT INTO TrafficLogs (UserId, SellerId, ProductId, PageType, IPAddress, DeviceType, CreatedAt)
-                        VALUES (@uId, @sId, @pId, @pType, @ip, @dType, GETDATE())
+                        VALUES (@uId, @sId, @pId, 'Product', @ip, @dType, GETDATE())
                     `;
 
                     const req = new Request(query, (err) => {
@@ -38,16 +45,15 @@ app.http('LogTraffic', {
                             context.error("Insert Error:", err.message);
                             return resolve({ status: 200, jsonBody: { message: "Silent fail on insert" } });
                         }
-                        resolve({ status: 200, jsonBody: { message: "Traffic Logged" } });
+                        resolve({ status: 200, jsonBody: { message: "Product View Logged" } });
                     });
 
                     // Add Parameters matching your SQL table schema
-                    req.addParameter('uId', TYPES.Int, userId || null);
+                    req.addParameter('uId', TYPES.Int, userId);
                     req.addParameter('sId', TYPES.Int, sellerId || null);
-                    req.addParameter('pId', TYPES.Int, productId || null);
-                    req.addParameter('pType', TYPES.VarChar, pageType);
+                    req.addParameter('pId', TYPES.Int, productId);
                     req.addParameter('ip', TYPES.VarChar, ipAddress);
-                    req.addParameter('dType', TYPES.VarChar, deviceType);
+                    req.addParameter('dType', TYPES.VarChar, deviceType || 'Desktop');
 
                     connection.execSql(req);
                 });

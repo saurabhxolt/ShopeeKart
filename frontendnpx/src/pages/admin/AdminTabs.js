@@ -9,7 +9,6 @@ const getPrimaryImage = (imageStr) => {
 };
 
 // --- ANALYTICS CARDS (TOP ROW) ---
-// 🔥 UPDATED: Added trafficSummary and isTrafficLoading props
 export const AnalyticsCards = ({ pendingSellers, activeSellers, totalActiveUsers, trafficSummary, isTrafficLoading }) => (
   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '20px', marginBottom: '35px' }}>
     {/* Existing Logic: Pending Approvals */}
@@ -24,32 +23,31 @@ export const AnalyticsCards = ({ pendingSellers, activeSellers, totalActiveUsers
       <div style={{ fontSize: '36px', fontWeight: 'bold' }}>{activeSellers.length}</div>
     </div>
 
-    {/* 🔥 NEW: Active Visits (24h) */}
+    {/* Existing Logic: Active Visits (24h) */}
     <div style={{ background: 'linear-gradient(135deg, #f6d365 0%, #fda085 100%)', padding: '20px', borderRadius: '12px', boxShadow: '0 4px 10px rgba(0,0,0,0.1)', color: '#fff' }}>
       <h4 style={{ margin: '0 0 10px 0', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '1px', color: '#bf360c' }}>🚀 Active Visits (24h)</h4>
       <div style={{ fontSize: '36px', fontWeight: 'bold', color: '#bf360c' }}>{isTrafficLoading ? '...' : (trafficSummary?.TotalHits || 0)}</div>
     </div>
 
-    {/* 🔥 NEW: Unique Visitors */}
+    {/* 🔥 UPDATED: Active Buyers (Using UserId logic from Backend) */}
     <div style={{ background: 'linear-gradient(135deg, #84fab0 0%, #8fd3f4 100%)', padding: '20px', borderRadius: '12px', boxShadow: '0 4px 10px rgba(0,0,0,0.1)', color: '#006266' }}>
-      <h4 style={{ margin: '0 0 10px 0', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '1px' }}>👥 Unique Visitors</h4>
-      <div style={{ fontSize: '36px', fontWeight: 'bold' }}>{isTrafficLoading ? '...' : (trafficSummary?.UniqueIPs || 0)}</div>
+      <h4 style={{ margin: '0 0 10px 0', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '1px' }}>👥 Active Buyers (24h)</h4>
+      <div style={{ fontSize: '36px', fontWeight: 'bold' }}>{isTrafficLoading ? '...' : (trafficSummary?.UniqueShoppers || 0)}</div>
     </div>
 
-    {/* 🔥 NEW: Mobile vs Desktop Split */}
+    {/* Existing Logic: Mobile vs Desktop Split */}
     <div style={{ background: 'linear-gradient(135deg, #e0c3fc 0%, #8ec5fc 100%)', padding: '20px', borderRadius: '12px', boxShadow: '0 4px 10px rgba(0,0,0,0.1)', color: '#4a00e0' }}>
-      <h4 style={{ margin: '0 0 10px 0', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '1px' }}>📱 Device Split</h4>
+      <h4 style={{ margin: '0 0 10px 0', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '1px' }}>📱 Device Used</h4>
       <div style={{ display: 'flex', gap: '15px', alignItems: 'baseline' }}>
-          <span style={{ fontSize: '24px', fontWeight: 'bold' }}>{trafficSummary?.MobileUsers || 0}</span> <small>Mob</small>
-          <span style={{ fontSize: '24px', fontWeight: 'bold' }}>{trafficSummary?.DesktopUsers || 0}</span> <small>PC</small>
+          <span style={{ fontSize: '24px', fontWeight: 'bold' }}>{trafficSummary?.MobileUsers || 0}</span> <small>on Mobile</small>
+          <span style={{ fontSize: '24px', fontWeight: 'bold' }}>{trafficSummary?.DesktopUsers || 0}</span> <small>on Desktop</small>
       </div>
     </div>
   </div>
 );
 
 // --- TAB 1: OVERVIEW ---
-// 🔥 UPDATED: Added topShops leaderboard
-export const OverviewTab = ({ pendingSellers, setReviewingSeller, topShops }) => (
+export const OverviewTab = ({ pendingSellers, setReviewingSeller, topShops, shoppers }) => (
   <div className="tab-content fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '30px' }}>
     
     {/* Awaiting Approvals Section */}
@@ -80,7 +78,26 @@ export const OverviewTab = ({ pendingSellers, setReviewingSeller, topShops }) =>
       )}
     </div>
 
-    {/* 🔥 NEW: Trending Shops Leaderboard (Proof of Traffic) */}
+      {/* 🔥 NEW SECTION: Active Shopper List */}
+    <div style={{ background: '#fff9db', padding: '20px', borderRadius: '10px', boxShadow: '0 2px 5px rgba(0,0,0,0.1)', borderLeft: '5px solid #fcc419' }}>
+        <h2 style={{ color: '#e67700', marginTop: 0 }}>👥 Active Shoppers (Last 24h)</h2>
+        {shoppers && shoppers.length > 0 ? (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
+                {shoppers.map((shopper, i) => (
+                    <div key={i} style={{ background: 'white', padding: '10px 15px', borderRadius: '20px', border: '1px solid #ffe066', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ fontSize: '18px' }}>👤</span>
+                        <div>
+                            <div style={{ fontWeight: 'bold', fontSize: '13px' }}>{shopper.name}</div>
+                            <div style={{ fontSize: '11px', color: '#666' }}>{shopper.email}</div>
+                        </div>
+                    </div>
+                ))}
+            </div>
+        ) : (
+            <p style={{ color: '#666' }}>No registered users have browsed products in the last 24 hours.</p>
+        )}
+    </div>
+    {/* Trending Shops Leaderboard (Proof of Traffic) */}
     <div style={{ background: '#f8f9fa', padding: '20px', borderRadius: '10px', boxShadow: '0 2px 5px rgba(0,0,0,0.1)', borderLeft: '5px solid #28a745' }}>
         <h2 style={{ color: '#1b5e20', marginTop: 0 }}>📈 Trending Shops (Weekly Traffic)</h2>
         {topShops && topShops.length > 0 ? (
@@ -273,4 +290,156 @@ export const BuyersTab = ({ activeBuyers, allUsers, handleAction }) => (
       </div>
     </div>
   </div>
+);
+
+// --- TAB 6: SECURITY & LOGS ---
+export const SecurityTab = ({ logs, isLogsLoading, handleArchiveAndClean }) => (
+  <div className="tab-content fade-in">
+    <div style={{ padding: '20px', background: 'white', borderRadius: '12px', boxShadow: '0 4px 12px rgba(0,0,0,0.05)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '15px' }}>
+          <div>
+              <h3 style={{ margin: '0 0 5px 0', color: '#333' }}>🛡️ Security & Login Compliance</h3>
+              <p style={{ margin: 0, fontSize: '13px', color: '#666' }}>CERT-In Compliance: Maintain active logs for 180 days.</p>
+          </div>
+          
+        <button
+          onClick={handleArchiveAndClean}
+          style={{ background: '#007bff', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}
+        >
+          📥 Download Last 180 Days
+        </button>
+      </div>
+
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px', minWidth: '800px' }}>
+            <thead>
+                <tr style={{ background: '#f8f9fa', textAlign: 'left', borderBottom: '2px solid #ddd' }}>
+                    <th style={{ padding: '12px' }}>Date & Time (IST)</th>
+                    <th style={{ padding: '12px' }}>IP Address</th>
+                    <th style={{ padding: '12px' }}>Email Attempt</th>
+                    <th style={{ padding: '12px' }}>Device / Browser</th>
+                    <th style={{ padding: '12px' }}>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                {isLogsLoading ? (
+                    <tr><td colSpan="5" style={{ textAlign: 'center', padding: '40px', color: '#888' }}>Loading security logs... ⏳</td></tr>
+                ) : logs.length === 0 ? (
+                    <tr><td colSpan="5" style={{ textAlign: 'center', padding: '40px', color: '#888' }}>No recent login activity found.</td></tr>
+                ) : (
+                    logs.map((log, index) => {
+                        let os = 'Unknown OS';
+                        let browser = 'Unknown Browser';
+                        if (log.device) {
+                            if (log.device.includes('Windows')) os = 'Windows';
+                            else if (log.device.includes('Macintosh')) os = 'Mac';
+                            else if (log.device.includes('Android')) os = 'Android';
+                            else if (log.device.includes('iPhone') || log.device.includes('iPad')) os = 'iOS';
+                            else if (log.device.includes('Linux')) os = 'Linux';
+
+                            if (log.device.includes('Edg/')) browser = 'Edge';
+                            else if (log.device.includes('Chrome')) browser = 'Chrome';
+                            else if (log.device.includes('Firefox')) browser = 'Firefox';
+                            else if (log.device.includes('Safari') && !log.device.includes('Chrome')) browser = 'Safari';
+                        }
+                        const readableDevice = `${browser} on ${os}`;
+                        return (
+                        <tr key={index} style={{ borderBottom: '1px solid #eee', background: log.action === 'LOGIN_FAILED' ? '#fff5f5' : 'white' }}>
+                            <td style={{ padding: '12px', color: '#555' }}>
+                                {log.date ? new Date(log.date.replace('Z', '')).toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }) : 'N/A'}
+                            </td>
+                            <td style={{ padding: '12px', fontFamily: 'monospace', fontWeight: 'bold', color: '#0056b3' }}>{log.ip}</td>
+                            <td style={{ padding: '12px' }}>{log.email || `User ID: ${log.userId}`}</td>
+                            <td style={{ padding: '12px', color: '#666', fontSize: '13px' }} title={log.device}>💻 {readableDevice}</td>
+                            <td style={{ padding: '12px' }}>
+                                <span style={{ background: log.action === 'LOGIN_SUCCESS' ? '#e8f5e9' : '#ffebee', color: log.action === 'LOGIN_SUCCESS' ? '#2e7d32' : '#c62828', padding: '4px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: 'bold', letterSpacing: '0.5px' }}>{log.action}</span>
+                            </td>
+                        </tr>
+                    )})
+                )}
+            </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+);
+
+// --- TAB 7: IntelligenceTab ---
+export const IntelligenceTab = ({ 
+    stats, isTrafficLoading, 
+    intelSearch, setIntelSearch, 
+    intelCategoryFilter, setIntelCategoryFilter, 
+    intelSortKey, setIntelSortKey,
+    uniqueCategories 
+}) => (
+    <div className="tab-content fade-in">
+        <div style={{ background: 'white', padding: '25px', borderRadius: '12px', boxShadow: '0 4px 12px rgba(0,0,0,0.05)' }}>
+            
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '25px', flexWrap: 'wrap', gap: '20px' }}>
+                <div style={{ flex: 1, minWidth: '250px' }}>
+                    <h3 style={{ margin: '0 0 5px 0', color: '#333' }}>💎 Marketplace Intelligence (90-Day Funnel)</h3>
+                    <p style={{ margin: '0 0 15px 0', fontSize: '13px', color: '#666' }}>Track views vs. actual sales to optimize inventory and custom offers.</p>
+                    <input 
+                        type="text" 
+                        placeholder="Search Product or Shop..." 
+                        value={intelSearch} 
+                        onChange={(e) => setIntelSearch(e.target.value)} 
+                        style={{ padding: '10px 15px', width: '100%', borderRadius: '8px', border: '1px solid #ddd', outline: 'none' }}
+                    />
+                </div>
+
+                <div style={{ display: 'flex', gap: '15px' }}>
+                    <div>
+                        <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', marginBottom: '5px', color: '#666' }}>Category Filter</label>
+                        <select value={intelCategoryFilter} onChange={(e) => setIntelCategoryFilter(e.target.value)} style={{ padding: '10px', borderRadius: '8px', border: '1px solid #ddd', minWidth: '150px' }}>
+                            {uniqueCategories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                        </select>
+                    </div>
+          <div>
+            <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', marginBottom: '5px', color: '#666' }}>Primary Sort</label>
+            <select value={intelSortKey} onChange={(e) => setIntelSortKey(e.target.value)} style={{ padding: '10px', borderRadius: '8px', border: '1px solid #ddd', minWidth: '150px' }}>
+              <option value="purchases_desc">🏆 Highest Purchased</option>
+              <option value="purchases_asc">📉 Lowest Purchased</option>
+              <option value="views_desc">🔥 Highest Viewed</option>
+              <option value="views_asc">🧊 Lowest Viewed</option>
+              <option value="shoppers_desc">👥 Most Unique Shoppers</option>
+            </select>
+          </div>
+                </div>
+            </div>
+
+            <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '1000px' }}>
+                    <thead>
+                        <tr style={{ textAlign: 'left', borderBottom: '2px solid #eee', color: '#888', fontSize: '13px' }}>
+                            <th style={{ padding: '15px' }}>Product Details</th>
+                            <th style={{ padding: '15px' }}>Store Name</th>
+                            <th style={{ padding: '15px' }}>Category</th>
+                            <th style={{ padding: '15px' }}>90D Views</th>
+                            <th style={{ padding: '15px' }}>Unique Shoppers</th>
+                            <th style={{ padding: '15px' }}>🔥 Purchases</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {isTrafficLoading ? (
+                            <tr><td colSpan="6" style={{ textAlign: 'center', padding: '40px' }}>Loading marketplace intelligence... ⏳</td></tr>
+                        ) : stats.map((item, i) => (
+                            <tr key={i} style={{ borderBottom: '1px solid #f9f9f9', background: item.purchases > 10 ? '#f0fff4' : 'white' }}>
+                                <td style={{ padding: '15px', fontWeight: 'bold', color: '#007bff' }}>{item.productName}</td>
+                                <td style={{ padding: '15px' }}><strong>{item.storeName}</strong></td>
+                                <td style={{ padding: '15px', color: '#666' }}>{item.category}</td>
+                                <td style={{ padding: '15px' }}>{item.views}</td>
+                                <td style={{ padding: '15px' }}>{item.shoppers} buyers</td>
+                                <td style={{ padding: '15px' }}>
+                                    <span style={{ background: '#2e7d32', color: 'white', padding: '6px 14px', borderRadius: '20px', fontWeight: 'bold', fontSize: '14px' }}>
+                                        {item.purchases} Sold
+                                    </span>
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
 );

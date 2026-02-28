@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import axios from 'axios';
+import UrgencyBadge from './UrgencyBadge';
 
 const BuyerShopView = ({ user, selectedSeller, onBack, addToCart, refreshKey, targetProductId }) => {
   const [products, setProducts] = useState([]);
@@ -20,9 +21,6 @@ const BuyerShopView = ({ user, selectedSeller, onBack, addToCart, refreshKey, ta
 
   // 🔥 NEW: Wishlist State
   const [wishlistIds, setWishlistIds] = useState([]);
-
-  // 🔥 NEW STATE: Urgency Badge
-  const [liveViewers, setLiveViewers] = useState(0);
 
   // 🔥 MOBILE OPTIMIZATION: Viewport detection
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
@@ -110,14 +108,9 @@ const BuyerShopView = ({ user, selectedSeller, onBack, addToCart, refreshKey, ta
               const ratingRes = await axios.get(`http://localhost:7071/api/GetProductRating?productId=${pId}`);
               setAvgRating(ratingRes.data.avgRating);
               setTotalRatings(ratingRes.data.totalRatings);
-
-              // 🔥 Fetch Live Viewers (Urgency Badge)
-              const viewerRes = await axios.get(`http://localhost:7071/api/GetProductLiveViewers?productId=${pId}`);
-              setLiveViewers(viewerRes.data.viewers);
-
-          } catch (err) {
+            } catch (err) {
               console.error("Failed to load product details", err);
-          }
+           }
       };
 
       // 2. Call it if a product is selected
@@ -275,7 +268,7 @@ const BuyerShopView = ({ user, selectedSeller, onBack, addToCart, refreshKey, ta
                     </div>
                     <div style={{ flex: 1, border: '1px solid #f0f0f0', display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '10px', height: isMobile ? '350px' : '600px', position: 'relative', width: '100%', boxSizing: 'border-box', overflow: 'hidden' }}>
                         
-                        {/* 🔥 NEW: Wishlist Heart on Main Image */}
+                        {/* Wishlist Heart on Main Image */}
                         <div 
                             onClick={(e) => handleWishlistToggle(e, selectedProduct.id || selectedProduct.ProductId)} 
                             style={{ position: 'absolute', top: 20, right: 20, cursor: 'pointer', fontSize: isMobile ? '24px' : '32px', zIndex: 10, background: 'rgba(255,255,255,0.8)', borderRadius: '50%', width: isMobile ? '40px' : '50px', height: isMobile ? '40px' : '50px', display: 'flex', justifyContent: 'center', alignItems: 'center', boxShadow: '0 2px 5px rgba(0,0,0,0.1)' }}
@@ -290,13 +283,6 @@ const BuyerShopView = ({ user, selectedSeller, onBack, addToCart, refreshKey, ta
                 <div style={{ flex: '1 1 100%', padding: isMobile ? '0' : '10px', width: '100%', boxSizing: 'border-box' }}>
                     <div style={{ color: '#878787', fontSize: '14px', fontWeight: '500', marginBottom: '5px' }}>{selectedProduct.brand || selectedProduct.Brand || 'Generic Brand'}</div>
                     
-                    {/* 🔥 THE URGENCY BADGE */}
-                    {liveViewers > 0 && (
-                        <div style={{ display: 'inline-block', background: '#fff5f5', color: '#dc3545', border: '1px solid #ffcdd2', padding: '4px 10px', borderRadius: '4px', fontSize: '12px', fontWeight: 'bold', marginBottom: '10px' }}>
-                            🔥 {liveViewers} {liveViewers === 1 ? 'person' : 'people'} viewed this recently
-                        </div>
-                    )}
-
                     <h1 style={{ fontSize: isMobile ? '18px' : '22px', color: '#212121', margin: '0 0 10px 0', fontWeight: 'normal', width: '100%', wordBreak: 'break-word' }}>{selectedProduct.name || selectedProduct.Name}</h1>
                     
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px', flexWrap: 'wrap', width: '100%', boxSizing: 'border-box' }}>
@@ -314,7 +300,8 @@ const BuyerShopView = ({ user, selectedSeller, onBack, addToCart, refreshKey, ta
                         </div>
                     </div>
 
-                    <div style={{ display: 'flex', alignItems: 'flex-end', gap: '12px', marginBottom: '25px', width: '100%', boxSizing: 'border-box' }}>
+                    {/* --- PRICE BLOCK --- */}
+                    <div style={{ display: 'flex', alignItems: 'flex-end', gap: '12px', marginBottom: '15px', width: '100%', boxSizing: 'border-box' }}>
                         <span style={{ fontSize: '28px', fontWeight: '500', color: '#212121' }}>₹{pPrice}</span>
                         {discount > 0 && (
                             <>
@@ -322,6 +309,11 @@ const BuyerShopView = ({ user, selectedSeller, onBack, addToCart, refreshKey, ta
                                 <span style={{ fontSize: '16px', color: '#388e3c', fontWeight: '500', marginBottom: '4px' }}>{discount}% off</span>
                             </>
                         )}
+                    </div>
+
+                    {/* 🔥 FOMO URGENCY BADGE ADDED HERE */}
+                    <div style={{ marginBottom: '25px' }}>
+                        <UrgencyBadge productId={selectedProduct.id || selectedProduct.ProductId} />
                     </div>
 
                     <div style={{ borderTop: '1px solid #f0f0f0', borderBottom: '1px solid #f0f0f0', padding: '20px 0', marginBottom: '20px', width: '100%', boxSizing: 'border-box' }}>
@@ -361,7 +353,7 @@ const BuyerShopView = ({ user, selectedSeller, onBack, addToCart, refreshKey, ta
 
                     <div style={{ display: 'flex', gap: '15px', marginTop: '30px', width: '100%', boxSizing: 'border-box' }}>
                         {Number(selectedProduct.qty || selectedProduct.Stock) > 0 ? (
-                            <>
+                            <> 
                                 <button onClick={() => addToCart(selectedProduct, false)} style={{ flex: 1, padding: '16px', background: '#ff9f00', color: 'white', border: 'none', borderRadius: '4px', fontSize: '16px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '10px' }}>
                                     🛒 ADD TO CART
                                 </button>

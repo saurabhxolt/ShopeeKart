@@ -12,7 +12,7 @@ app.http('GetSellerAnalytics', {
     authLevel: 'anonymous',
     handler: async (request, context) => {
         const userId = request.query.get('sellerId'); 
-        const days = parseInt(request.query.get('days')) || 30; // 🔥 Now supports dynamic days
+        const days = parseInt(request.query.get('days')) || 30; 
         if (!userId) return { status: 400, body: "UserId is required" };
 
         return new Promise((resolve) => {
@@ -26,27 +26,29 @@ app.http('GetSellerAnalytics', {
 
                     IF @sId IS NOT NULL
                     BEGIN
-                        -- 🔥 SINGLE RESULT SET STRATEGY (Tagging rows to prevent crashes)
-                        SELECT 'SUMMARY' as RowType, 'TotalStoreViews' as Label, CAST(COUNT(*) AS VARCHAR) as Value, '' as Extra 
-                        FROM TrafficLogs WHERE SellerId = @sId AND PageType = 'Shop' AND CreatedAt >= DATEADD(day, -@days, GETDATE())
-                        
-                        UNION ALL
-                        
-                        SELECT 'SUMMARY', 'TotalProductViews', CAST(COUNT(*) AS VARCHAR), '' 
-                        FROM TrafficLogs WHERE SellerId = @sId AND PageType = 'Product' AND CreatedAt >= DATEADD(day, -@days, GETDATE())
-                        
-                        UNION ALL
-                        
-                        SELECT 'SUMMARY', 'UniqueVisitors', CAST(COUNT(DISTINCT IPAddress) AS VARCHAR), '' 
+                        -- 🔥 1. Total Views (Replaces redundant Store/Product view split)
+                        SELECT 'SUMMARY' as RowType, 'TotalHits' as Label, CAST(COUNT(*) AS VARCHAR) as Value, '' as Extra 
                         FROM TrafficLogs WHERE SellerId = @sId AND CreatedAt >= DATEADD(day, -@days, GETDATE())
                         
                         UNION ALL
                         
-                        -- Product Stats
+                        -- 🔥 2. Unique Shoppers (Strictly using verified UserIds now)
+                        SELECT 'SUMMARY', 'UniqueShoppers', CAST(COUNT(DISTINCT UserId) AS VARCHAR), '' 
+                        FROM TrafficLogs WHERE SellerId = @sId AND CreatedAt >= DATEADD(day, -@days, GETDATE())
+                        
+                        UNION ALL
+
+                        -- 🔥 3. Mobile Users (Feeds the new 3rd UI Card)
+                        SELECT 'SUMMARY', 'MobileUsers', CAST(ISNULL(SUM(CASE WHEN DeviceType = 'Mobile' THEN 1 ELSE 0 END), 0) AS VARCHAR), ''
+                        FROM TrafficLogs WHERE SellerId = @sId AND CreatedAt >= DATEADD(day, -@days, GETDATE())
+                        
+                        UNION ALL
+                        
+                        -- 🔥 4. Item Level Product Stats
                         SELECT 'PRODUCT', p.Name, CAST(COUNT(t.LogId) AS VARCHAR), p.Category
                         FROM TrafficLogs t
                         JOIN Products p ON t.ProductId = p.ProductId
-                        WHERE t.SellerId = @sId AND t.PageType = 'Product' AND t.CreatedAt >= DATEADD(day, -@days, GETDATE())
+                        WHERE t.SellerId = @sId AND t.CreatedAt >= DATEADD(day, -@days, GETDATE())
                         GROUP BY p.Name, p.Category;
                     END
                 `;
@@ -68,9 +70,9 @@ app.http('GetSellerAnalytics', {
                     const extra = columns[3].value;
 
                     if (rowType === 'SUMMARY') {
-                        result.summary[label] = parseInt(val);
-                    } else {
-                        result.productStats.push({ name: label, views: parseInt(val), category: extra });
+                        result.summary[label] = parseInt(val) || 0;
+                    } else if (rowType === 'PRODUCT') {
+                        result.productStats.push({ name: label, views: parseInt(val) || 0, category: extra });
                     }
                 });
 

@@ -1,0 +1,12 @@
+LogId,UserId,EmailAttempt,IPAddress,Action,CreatedAt,DeviceData
+1,40,g@gmail.com,0.0.0.0,LOGIN_SUCCESS,2026-02-28T20:11:33.060Z,"Unknown"
+2,13,test@gmail.com,0.0.0.0,LOGIN_SUCCESS,2026-02-28T20:13:40.950Z,"Unknown"
+3,43,archissonwal@gmail.com,0.0.0.0,LOGIN_SUCCESS,2026-02-28T20:15:06.420Z,"Unknown"
+4,13,test@gmail.com,0.0.0.0,LOGIN_SUCCESS,2026-02-28T20:15:18.160Z,"Unknown"
+5,18,te@gmail.com,0.0.0.0,LOGIN_SUCCESS,2026-02-28T20:15:49.183Z,"Unknown"
+6,43,archissonwal@gmail.com,0.0.0.0,LOGIN_SUCCESS,2026-02-28T20:16:13.633Z,"Unknown"
+7,N/A,archissonwal@gmail.com,0.0.0.0,LOGIN_FAILED,2026-02-28T20:16:34.823Z,"Unknown"
+8,N/A,archissonwal@gmail.com,0.0.0.0,LOGIN_FAILED,2026-02-28T20:23:04.827Z,"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36 Edg/145.0.0.0"
+9,43,archissonwal@gmail.com,0.0.0.0,LOGIN_SUCCESS,2026-02-28T20:23:10.973Z,"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36 Edg/145.0.0.0"
+10,43,archissonwal@gmail.com,0.0.0.0,LOGIN_SUCCESS,2026-02-28T20:29:27.870Z,"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36 Edg/145.0.0.0"
+11,13,test@gmail.com,0.0.0.0,LOGIN_SUCCESS,2026-02-28T20:29:33.673Z,"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36 Edg/145.0.0.0"

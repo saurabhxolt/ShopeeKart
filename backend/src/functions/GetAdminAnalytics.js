@@ -18,28 +18,31 @@ app.http('GetAdminAnalytics', {
                 if (err) return resolve({ status: 500, jsonBody: { error: err.message } });
 
                 const query = `
-                    -- 1. Total Activity (Last 24 Hours)
+                    -- 1. Summary Stats (Last 24 Hours)
                     SELECT 'TotalHits' as StatType, COUNT(*) as Value FROM TrafficLogs WHERE CreatedAt >= DATEADD(day, -1, GETDATE())
                     UNION ALL
-                    -- 2. Unique Visitors (Last 24 Hours)
-                    SELECT 'UniqueIPs', COUNT(DISTINCT IPAddress) FROM TrafficLogs WHERE CreatedAt >= DATEADD(day, -1, GETDATE())
+                    SELECT 'UniqueShoppers', COUNT(DISTINCT UserId) FROM TrafficLogs WHERE CreatedAt >= DATEADD(day, -1, GETDATE())
                     UNION ALL
-                    -- 3. Mobile Users
                     SELECT 'MobileUsers', COUNT(*) FROM TrafficLogs WHERE DeviceType = 'Mobile' AND CreatedAt >= DATEADD(day, -1, GETDATE())
                     UNION ALL
-                    -- 4. Desktop Users
                     SELECT 'DesktopUsers', COUNT(*) FROM TrafficLogs WHERE DeviceType = 'Desktop' AND CreatedAt >= DATEADD(day, -1, GETDATE());
 
-                    -- 5. Top 5 Shops by Traffic
+                    -- 2. Top 5 Shops by Traffic (Last 7 Days)
                     SELECT TOP 5 s.StoreName, COUNT(t.LogId) as ViewCount
                     FROM TrafficLogs t
                     JOIN Sellers s ON t.SellerId = s.SellerId
-                    WHERE t.PageType = 'Shop' AND t.CreatedAt >= DATEADD(day, -7, GETDATE())
+                    WHERE t.CreatedAt >= DATEADD(day, -7, GETDATE())
                     GROUP BY s.StoreName
                     ORDER BY ViewCount DESC;
+
+                    -- 3. 🔥 NEW: List of Unique Shoppers (Last 24 Hours)
+                    SELECT DISTINCT u.FullName, u.Email, u.UserId
+                    FROM TrafficLogs t
+                    JOIN Users u ON t.UserId = u.UserId
+                    WHERE t.CreatedAt >= DATEADD(day, -1, GETDATE());
                 `;
 
-                const result = { summary: {}, topShops: [] };
+                const result = { summary: {}, topShops: [], shoppers: [] };
                 const req = new Request(query, (err) => {
                     connection.close();
                     if (err) return resolve({ status: 500, jsonBody: { error: err.message } });
@@ -50,19 +53,17 @@ app.http('GetAdminAnalytics', {
                 req.on('row', (columns) => {
                     if (recordsetIndex === 0) {
                         result.summary[columns[0].value] = columns[1].value;
+                    } else if (recordsetIndex === 1) {
+                        result.topShops.push({ name: columns[0].value, views: columns[1].value });
                     } else {
-                        result.topShops.push({ 
-                            name: columns[0].value, 
-                            views: columns[1].value 
-                        });
+                        // 🔥 Map the third result set
+                        result.shoppers.push({ name: columns[0].value, email: columns[1].value, id: columns[2].value });
                     }
                 });
 
                 req.on('doneInProc', () => { recordsetIndex++; });
-
                 connection.execSql(req);
             });
-
             connection.connect();
         });
     }

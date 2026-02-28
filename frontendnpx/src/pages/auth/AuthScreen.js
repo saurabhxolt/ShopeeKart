@@ -27,7 +27,17 @@ const AuthScreen = ({ onUserAuthenticated }) => {
       setNotify({ text: '', type: '' });
   };
 
-  // 🔥 NEW: Validation Logic
+  // 🔥 NEW: Security Logging Helper
+  // Fires asynchronously so it doesn't block the UI
+  const logSecurityEvent = (attemptEmail, userId, actionType) => {
+      axios.post('http://localhost:7071/api/LogSecurityEvent', {
+          email: attemptEmail,
+          userId: userId,
+          action: actionType
+      }).catch(err => console.warn("Security log failed silently", err));
+  };
+
+  // Validation Logic
   const validateInputs = () => {
     // 1. Name Validation (Min 3 chars, Alphabets & Spaces only)
     const nameRegex = /^[a-zA-Z\s]{3,}$/;
@@ -61,7 +71,7 @@ const AuthScreen = ({ onUserAuthenticated }) => {
   const handleInitiateSignup = async () => {
     if (!email || !password || !fullName) return showNotification("Please fill all fields", "error");
     
-    // 🔥 Trigger Constraints Check
+    // Trigger Constraints Check
     if (!validateInputs()) return;
 
     try {
@@ -111,7 +121,7 @@ const AuthScreen = ({ onUserAuthenticated }) => {
   };
 
   const handleFinalizeReset = async () => {
-    // 🔥 Validate New Password during reset too
+    // Validate New Password during reset too
     const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
     if (!passwordRegex.test(newPassword)) {
         return showNotification("New password must be 8+ characters with uppercase, lowercase, and a number.", "error");
@@ -133,8 +143,15 @@ const AuthScreen = ({ onUserAuthenticated }) => {
       const res = await axios.post('http://localhost:7071/api/Login', { email, password });
       const { userId, role, name, token, isApproved, email: userEmail, phone } = res.data;
       const userData = { userId, role, name, token, isApproved, email: userEmail, phone };
+      
+      // 🔥 SUCCESS: Log the successful login event
+      logSecurityEvent(email, userId, 'LOGIN_SUCCESS');
+
       onUserAuthenticated(userData);
     } catch (err) {
+      // 🔥 FAIL: Log the failed login attempt
+      logSecurityEvent(email, null, 'LOGIN_FAILED');
+
       if (err.response && err.response.data) showNotification(err.response.data, "error"); 
       else showNotification("Login Failed. Please check your details.", "error");
     }
