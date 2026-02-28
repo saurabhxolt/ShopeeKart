@@ -18,6 +18,10 @@ function AdminDashboard({ user }) {
   const [allProducts, setAllProducts] = useState([]);
   const [allOrders, setAllOrders] = useState([]); 
   
+  // 🔥 NEW STATE: Traffic Analytics
+  const [trafficData, setTrafficData] = useState({ summary: {}, topShops: [] });
+  const [isTrafficLoading, setIsTrafficLoading] = useState(true);
+
   // Modals & Navigation State
   const [reviewingSeller, setReviewingSeller] = useState(null); 
   const [viewingProduct, setViewingProduct] = useState(null); 
@@ -43,6 +47,21 @@ function AdminDashboard({ user }) {
       console.error("Failed to load admin data");
     }
   };
+
+  // 🔥 NEW EFFECT: Fetch Traffic Analytics separately
+  useEffect(() => {
+    const fetchTraffic = async () => {
+        try {
+            const res = await axios.get('http://localhost:7071/api/GetAdminAnalytics');
+            setTrafficData(res.data);
+        } catch (err) {
+            console.error("Failed to load traffic analytics", err);
+        } finally {
+            setIsTrafficLoading(false);
+        }
+    };
+    fetchTraffic();
+  }, [activeTab]); // Refresh when switching tabs to stay up to date
 
   useEffect(() => { fetchData(); }, [activeTab]);
 
@@ -94,9 +113,17 @@ function AdminDashboard({ user }) {
   return (
     <div style={{ padding: '20px', maxWidth: '1400px', margin: '0 auto', fontFamily: 'sans-serif' }}>
       
-      <AnalyticsCards pendingSellers={pendingSellers} activeSellers={activeSellers} activeBuyers={activeBuyers} totalActiveUsers={totalActiveUsers} />
+      {/* 🔥 UPDATED: AnalyticsCards now receives traffic data for live display */}
+      <AnalyticsCards 
+        pendingSellers={pendingSellers} 
+        activeSellers={activeSellers} 
+        activeBuyers={activeBuyers} 
+        totalActiveUsers={totalActiveUsers} 
+        trafficSummary={trafficData.summary}
+        isTrafficLoading={isTrafficLoading}
+      />
 
-      <div style={{ display: 'flex', borderBottom: '2px solid #ddd', marginBottom: '25px', gap: '30px' }}>
+      <div style={{ display: 'flex', borderBottom: '2px solid #ddd', marginBottom: '25px', gap: '30px', overflowX: 'auto' }}>
         <TabButton label="📊 Action Overview" isActive={activeTab === 'overview'} onClick={() => setActiveTab('overview')} alertCount={pendingSellers.length} />
         <TabButton label="📦 Product Moderation" isActive={activeTab === 'products'} onClick={() => setActiveTab('products')} alertCount={allProducts.filter(p => (p.fixSubmitted || p.FixSubmitted) && p.IsArchived).length} />
         <TabButton label="🚛 All Shipments" isActive={activeTab === 'orders'} onClick={() => setActiveTab('orders')} alertCount={allOrders.filter(o => o.Status === 'Placed' && o.HoursSincePlaced > 48).length} />
@@ -104,7 +131,14 @@ function AdminDashboard({ user }) {
         <TabButton label="🛍️ Manage Buyers" isActive={activeTab === 'buyers'} onClick={() => setActiveTab('buyers')} />
       </div>
 
-      {activeTab === 'overview' && <OverviewTab pendingSellers={pendingSellers} setReviewingSeller={setReviewingSeller} />}
+      {activeTab === 'overview' && (
+        <OverviewTab 
+            pendingSellers={pendingSellers} 
+            setReviewingSeller={setReviewingSeller} 
+            topShops={trafficData.topShops} // Pass trending shops to Overview
+        />
+      )}
+      
       {activeTab === 'orders' && <OrdersTab filteredOrders={filteredOrders} uniqueOrderStores={uniqueOrderStores} orderStoreFilter={orderStoreFilter} setOrderStoreFilter={setOrderStoreFilter} setManagingOrder={setManagingOrder} />}
       {activeTab === 'products' && <ProductsTab filteredProducts={filteredProducts} productSearch={productSearch} setProductSearch={setProductSearch} setViewingProduct={setViewingProduct} handleToggleProduct={handleToggleProduct} />}
       {activeTab === 'sellers' && <SellersTab activeSellers={activeSellers} allUsers={allUsers} handleAction={handleAction} />}

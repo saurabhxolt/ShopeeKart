@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 
 // --- LAYOUT ---
@@ -40,7 +40,7 @@ function App() {
 
   const [checkoutSession, setCheckoutSession] = useState({ items: [], isBuyNow: false });
 
-  // 🔥 ADDED: Viewport detection for global App layout
+  // 🔥 VIEWPORT DETECTION
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
 
   useEffect(() => {
@@ -48,6 +48,36 @@ function App() {
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
+
+  // 🔥 NEW: TRAFFIC LOGGING HELPER (Layered on top)
+  const logTraffic = useCallback(async (pageType, sellerId = null, productId = null) => {
+    if (!user) return;
+    try {
+      await axios.post('http://localhost:7071/api/LogTraffic', {
+        userId: user.userId,
+        sellerId: sellerId,
+        productId: productId,
+        pageType: pageType,
+        deviceType: isMobile ? 'Mobile' : 'Desktop'
+      });
+    } catch (e) {
+      console.warn("Traffic log failed silently");
+    }
+  }, [user, isMobile]);
+
+  // 🔥 NEW: LOG HOME PAGE VISITS
+  useEffect(() => {
+    if (user?.role === 'BUYER' && !selectedSeller && globalSearch.trim() === '') {
+      logTraffic('Home');
+    }
+  }, [selectedSeller, globalSearch, user?.role, logTraffic]);
+
+  // 🔥 NEW: LOG SEARCH QUERIES
+  useEffect(() => {
+    if (globalSearch.trim().length > 1 && searchResults.length > 0 && !isSearching) {
+      logTraffic('Search');
+    }
+  }, [searchResults.length, isSearching, logTraffic]);
 
   // --- GLOBAL SEARCH EFFECT ---
   useEffect(() => {
@@ -190,7 +220,6 @@ function App() {
   if (!user) return <AuthScreen onUserAuthenticated={setUser} />;
 
   return (
-    // 🔥 UPDATED: Added width: '100%' and overflowX: 'hidden' to the main container
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', background: '#f1f3f6', width: '100%', overflowX: 'hidden' }}>
       
       <Header 
@@ -207,7 +236,6 @@ function App() {
         hideSearch={!!selectedSeller || isAccountModalOpen || isCheckoutModalOpen || isBuyerOrdersOpen}
       />
       
-      {/* 🔥 UPDATED: Swapped fixed padding for responsive padding (0 on mobile, 40px on desktop) */}
       <div style={{ padding: isMobile ? '0' : '40px', flex: 1, width: '100%', boxSizing: 'border-box' }}>
           {user.role === 'ADMIN' && <AdminDashboard user={user} />}
           {user.role === 'SELLER' && <SellerDashboard user={user} />}
@@ -215,7 +243,7 @@ function App() {
           {user.role === 'BUYER' && (
               <>
                 {globalSearch.trim().length > 1 ? (
-                    <div style={{ padding: isMobile ? '10px' : '0' }}> {/* Added a tiny bit of padding to search view on mobile so cards don't hit the screen edge */}
+                    <div style={{ padding: isMobile ? '10px' : '0' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
                             <h2 style={{ margin: 0, color: '#212121', fontSize: isMobile ? '18px' : '24px' }}>
                                 {isSearching ? '🔍 Searching...' : `Found ${searchResults.length} items for "${globalSearch}"`}

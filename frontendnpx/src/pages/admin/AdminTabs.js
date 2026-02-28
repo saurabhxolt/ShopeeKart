@@ -9,53 +9,108 @@ const getPrimaryImage = (imageStr) => {
 };
 
 // --- ANALYTICS CARDS (TOP ROW) ---
-export const AnalyticsCards = ({ pendingSellers, activeSellers, activeBuyers, totalActiveUsers }) => (
+// 🔥 UPDATED: Added trafficSummary and isTrafficLoading props
+export const AnalyticsCards = ({ pendingSellers, activeSellers, totalActiveUsers, trafficSummary, isTrafficLoading }) => (
   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '20px', marginBottom: '35px' }}>
+    {/* Existing Logic: Pending Approvals */}
     <div style={{ background: 'linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%)', padding: '20px', borderRadius: '12px', boxShadow: '0 4px 10px rgba(0,0,0,0.1)', color: '#fff' }}>
       <h4 style={{ margin: '0 0 10px 0', fontSize: '14px', textTransform: 'uppercase', letterSpacing: '1px', color: '#c0392b' }}>⏳ Pending Approvals</h4>
       <div style={{ fontSize: '36px', fontWeight: 'bold', color: '#c0392b' }}>{pendingSellers.length}</div>
     </div>
+
+    {/* Existing Logic: Active Shops */}
     <div style={{ background: 'linear-gradient(135deg, #a1c4fd 0%, #c2e9fb 100%)', padding: '20px', borderRadius: '12px', boxShadow: '0 4px 10px rgba(0,0,0,0.1)', color: '#0d47a1' }}>
       <h4 style={{ margin: '0 0 10px 0', fontSize: '14px', textTransform: 'uppercase', letterSpacing: '1px' }}>🏪 Active Shops</h4>
       <div style={{ fontSize: '36px', fontWeight: 'bold' }}>{activeSellers.length}</div>
     </div>
-    <div style={{ background: 'linear-gradient(135deg, #84fab0 0%, #8fd3f4 100%)', padding: '20px', borderRadius: '12px', boxShadow: '0 4px 10px rgba(0,0,0,0.1)', color: '#006266' }}>
-      <h4 style={{ margin: '0 0 10px 0', fontSize: '14px', textTransform: 'uppercase', letterSpacing: '1px' }}>🛍️ Registered Buyers</h4>
-      <div style={{ fontSize: '36px', fontWeight: 'bold' }}>{activeBuyers.length}</div>
+
+    {/* 🔥 NEW: Active Visits (24h) */}
+    <div style={{ background: 'linear-gradient(135deg, #f6d365 0%, #fda085 100%)', padding: '20px', borderRadius: '12px', boxShadow: '0 4px 10px rgba(0,0,0,0.1)', color: '#fff' }}>
+      <h4 style={{ margin: '0 0 10px 0', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '1px', color: '#bf360c' }}>🚀 Active Visits (24h)</h4>
+      <div style={{ fontSize: '36px', fontWeight: 'bold', color: '#bf360c' }}>{isTrafficLoading ? '...' : (trafficSummary?.TotalHits || 0)}</div>
     </div>
+
+    {/* 🔥 NEW: Unique Visitors */}
+    <div style={{ background: 'linear-gradient(135deg, #84fab0 0%, #8fd3f4 100%)', padding: '20px', borderRadius: '12px', boxShadow: '0 4px 10px rgba(0,0,0,0.1)', color: '#006266' }}>
+      <h4 style={{ margin: '0 0 10px 0', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '1px' }}>👥 Unique Visitors</h4>
+      <div style={{ fontSize: '36px', fontWeight: 'bold' }}>{isTrafficLoading ? '...' : (trafficSummary?.UniqueIPs || 0)}</div>
+    </div>
+
+    {/* 🔥 NEW: Mobile vs Desktop Split */}
     <div style={{ background: 'linear-gradient(135deg, #e0c3fc 0%, #8ec5fc 100%)', padding: '20px', borderRadius: '12px', boxShadow: '0 4px 10px rgba(0,0,0,0.1)', color: '#4a00e0' }}>
-      <h4 style={{ margin: '0 0 10px 0', fontSize: '14px', textTransform: 'uppercase', letterSpacing: '1px' }}>👥 Total Active Users</h4>
-      <div style={{ fontSize: '36px', fontWeight: 'bold' }}>{totalActiveUsers.length}</div>
+      <h4 style={{ margin: '0 0 10px 0', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '1px' }}>📱 Device Split</h4>
+      <div style={{ display: 'flex', gap: '15px', alignItems: 'baseline' }}>
+          <span style={{ fontSize: '24px', fontWeight: 'bold' }}>{trafficSummary?.MobileUsers || 0}</span> <small>Mob</small>
+          <span style={{ fontSize: '24px', fontWeight: 'bold' }}>{trafficSummary?.DesktopUsers || 0}</span> <small>PC</small>
+      </div>
     </div>
   </div>
 );
 
 // --- TAB 1: OVERVIEW ---
-export const OverviewTab = ({ pendingSellers, setReviewingSeller }) => (
-  <div className="tab-content fade-in">
+// 🔥 UPDATED: Added topShops leaderboard
+export const OverviewTab = ({ pendingSellers, setReviewingSeller, topShops }) => (
+  <div className="tab-content fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '30px' }}>
+    
+    {/* Awaiting Approvals Section */}
     <div style={{ background: '#e3f2fd', padding: '20px', borderRadius: '10px', boxShadow: '0 2px 5px rgba(0,0,0,0.1)', borderLeft: '5px solid #007bff' }}>
       <h2 style={{ color: '#0d47a1', marginTop: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>⏳ Awaiting Shop Approvals ({pendingSellers.length})</h2>
       {pendingSellers.length === 0 ? (
         <p style={{ color: '#555', fontStyle: 'italic' }}>All caught up! No pending shops.</p>
       ) : (
-        <table style={{ width: '100%', background: 'white', borderCollapse: 'collapse', borderRadius: '8px', overflow: 'hidden' }}>
-          <thead>
-            <tr style={{ background: '#1976d2', color: 'white', textAlign: 'left' }}>
-              <th style={{ padding: '12px' }}>Store Name</th><th style={{ padding: '12px' }}>Owner</th><th style={{ padding: '12px' }}>Email</th><th style={{ padding: '12px' }}>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {pendingSellers.map(s => (
-              <tr key={s.SellerId} style={{ borderBottom: '1px solid #eee' }}>
-                <td style={{ padding: '12px', fontWeight: 'bold' }}>{s.StoreName || 'Unnamed'}</td>
-                <td style={{ padding: '12px' }}>{s.FullName}</td>
-                <td style={{ padding: '12px' }}>{s.Email}</td>
-                <td style={{ padding: '12px' }}><button onClick={() => setReviewingSeller(s)} style={{ background: '#007bff', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '4px', cursor:'pointer', fontWeight: 'bold' }}>🔍 Review Shop</button></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', background: 'white', borderCollapse: 'collapse', borderRadius: '8px', overflow: 'hidden' }}>
+              <thead>
+                <tr style={{ background: '#1976d2', color: 'white', textAlign: 'left' }}>
+                  <th style={{ padding: '12px' }}>Store Name</th><th style={{ padding: '12px' }}>Owner</th><th style={{ padding: '12px' }}>Email</th><th style={{ padding: '12px' }}>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pendingSellers.map(s => (
+                  <tr key={s.SellerId} style={{ borderBottom: '1px solid #eee' }}>
+                    <td style={{ padding: '12px', fontWeight: 'bold' }}>{s.StoreName || 'Unnamed'}</td>
+                    <td style={{ padding: '12px' }}>{s.FullName}</td>
+                    <td style={{ padding: '12px' }}>{s.Email}</td>
+                    <td style={{ padding: '12px' }}><button onClick={() => setReviewingSeller(s)} style={{ background: '#007bff', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '4px', cursor:'pointer', fontWeight: 'bold' }}>🔍 Review Shop</button></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+        </div>
       )}
+    </div>
+
+    {/* 🔥 NEW: Trending Shops Leaderboard (Proof of Traffic) */}
+    <div style={{ background: '#f8f9fa', padding: '20px', borderRadius: '10px', boxShadow: '0 2px 5px rgba(0,0,0,0.1)', borderLeft: '5px solid #28a745' }}>
+        <h2 style={{ color: '#1b5e20', marginTop: 0 }}>📈 Trending Shops (Weekly Traffic)</h2>
+        {topShops && topShops.length > 0 ? (
+            <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', background: 'white', borderCollapse: 'collapse', borderRadius: '8px', overflow: 'hidden' }}>
+                    <thead>
+                        <tr style={{ background: '#28a745', color: 'white', textAlign: 'left' }}>
+                            <th style={{ padding: '12px' }}>Shop Name</th>
+                            <th style={{ padding: '12px' }}>View Count</th>
+                            <th style={{ padding: '12px' }}>Activity Level</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {topShops.map((shop, i) => (
+                            <tr key={i} style={{ borderBottom: '1px solid #eee' }}>
+                                <td style={{ padding: '12px', fontWeight: 'bold' }}>{shop.name}</td>
+                                <td style={{ padding: '12px' }}>{shop.views} visits</td>
+                                <td style={{ padding: '12px' }}>
+                                    <div style={{ width: '100%', maxWidth: '200px', height: '10px', background: '#e9ecef', borderRadius: '5px', overflow: 'hidden' }}>
+                                        <div style={{ width: `${(shop.views / topShops[0].views) * 100}%`, height: '100%', background: '#28a745' }}></div>
+                                    </div>
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+        ) : (
+            <p style={{ color: '#666' }}>Capturing traffic data... Check back shortly.</p>
+        )}
     </div>
   </div>
 );
@@ -63,7 +118,7 @@ export const OverviewTab = ({ pendingSellers, setReviewingSeller }) => (
 // --- TAB 2: ORDERS ---
 export const OrdersTab = ({ filteredOrders, uniqueOrderStores, orderStoreFilter, setOrderStoreFilter, setManagingOrder }) => (
   <div className="tab-content fade-in">
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px', flexWrap: 'wrap', gap: '10px' }}>
         <h2 style={{ color: '#495057', margin: 0 }}>🚛 Global Order Lifecycle ({filteredOrders.length})</h2>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <span style={{ fontWeight: 'bold', color: '#555' }}>Filter by Seller:</span>
@@ -72,8 +127,8 @@ export const OrdersTab = ({ filteredOrders, uniqueOrderStores, orderStoreFilter,
             </select>
         </div>
     </div>
-    <div style={{ background: 'white', borderRadius: '12px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', overflow: 'hidden' }}>
-      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+    <div style={{ background: 'white', borderRadius: '12px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', overflowX: 'auto' }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '800px' }}>
         <thead>
           <tr style={{ background: '#343a40', color: 'white', textAlign: 'left' }}>
             <th style={{ padding: '15px' }}>Order ID</th><th style={{ padding: '15px' }}>Parties (Buyer & Seller)</th><th style={{ padding: '15px' }}>Current Status</th><th style={{ padding: '15px' }}>Order Date (IST)</th><th style={{ padding: '15px' }}>Amount</th><th style={{ padding: '15px' }}>Action</th>
@@ -92,7 +147,6 @@ export const OrdersTab = ({ filteredOrders, uniqueOrderStores, orderStoreFilter,
                   </span>
                 </td>
                 <td style={{ padding: '15px' }}>
-                    {/* 🔥 THE FIX: Strip 'Z' to force local DB time */}
                     <div style={{ fontWeight: 'bold', fontSize: '13px', color: '#333' }}>
                         {o.OrderDate ? new Date(o.OrderDate.replace('Z', '')).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true }) : 'N/A'}
                     </div>
@@ -116,12 +170,12 @@ export const OrdersTab = ({ filteredOrders, uniqueOrderStores, orderStoreFilter,
 // --- TAB 3: PRODUCTS ---
 export const ProductsTab = ({ filteredProducts, productSearch, setProductSearch, setViewingProduct, handleToggleProduct }) => (
   <div className="tab-content fade-in">
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px', flexWrap: 'wrap', gap: '10px' }}>
       <h2 style={{ color: '#495057', margin: 0 }}>📦 Global Product Feed ({filteredProducts.length})</h2>
       <input type="text" placeholder="Search by Product or Store Name..." value={productSearch} onChange={(e) => setProductSearch(e.target.value)} style={{ padding: '10px 15px', width: '300px', borderRadius: '6px', border: '1px solid #ccc', outline: 'none' }} />
     </div>
-    <div style={{ background: 'white', borderRadius: '8px', boxShadow: '0 2px 5px rgba(0,0,0,0.1)', overflow: 'hidden' }}>
-      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+    <div style={{ background: 'white', borderRadius: '8px', boxShadow: '0 2px 5px rgba(0,0,0,0.1)', overflowX: 'auto' }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '800px' }}>
         <thead>
           <tr style={{ background: '#6c757d', color: 'white', textAlign: 'left' }}>
             <th style={{ padding: '15px' }}>Image</th><th style={{ padding: '15px' }}>Product Info</th><th style={{ padding: '15px' }}>Store</th><th style={{ padding: '15px' }}>Metrics</th><th style={{ padding: '15px' }}>Status</th><th style={{ padding: '15px' }}>Actions</th>
@@ -158,31 +212,35 @@ export const SellersTab = ({ activeSellers, allUsers, handleAction }) => (
   <div className="tab-content fade-in">
     <div style={{ background: '#e8f5e9', padding: '20px', borderRadius: '10px', marginBottom: '30px', boxShadow: '0 2px 5px rgba(0,0,0,0.1)' }}>
       <h2 style={{ color: '#1b5e20', marginTop: 0 }}>✅ Active Shops ({activeSellers.length})</h2>
-      <table style={{ width: '100%', background: 'white', borderCollapse: 'collapse', borderRadius: '8px', overflow: 'hidden' }}>
-        <thead><tr style={{ background: '#388e3c', color: 'white', textAlign: 'left' }}><th style={{ padding: '12px' }}>Store Name</th><th style={{ padding: '12px' }}>Owner</th><th>Status</th><th>Actions</th></tr></thead>
-        <tbody>
-          {activeSellers.map(s => (
-            <tr key={s.SellerId} style={{ borderBottom: '1px solid #eee' }}>
-              <td style={{ padding: '12px', fontWeight: 'bold' }}>{s.StoreName}</td><td style={{ padding: '12px' }}>{s.FullName}</td><td style={{ fontWeight: 'bold', color: '#28a745' }}>Active</td>
-              <td><button onClick={() => handleAction('BAN', s.SellerId)} style={{ background: '#ffc107', border: 'none', padding: '5px 10px', borderRadius: '4px', cursor:'pointer', fontWeight: 'bold' }}>⏸️ Suspend Shop</button></td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', background: 'white', borderCollapse: 'collapse', borderRadius: '8px', overflow: 'hidden' }}>
+            <thead><tr style={{ background: '#388e3c', color: 'white', textAlign: 'left' }}><th style={{ padding: '12px' }}>Store Name</th><th style={{ padding: '12px' }}>Owner</th><th>Status</th><th>Actions</th></tr></thead>
+            <tbody>
+              {activeSellers.map(s => (
+                <tr key={s.SellerId} style={{ borderBottom: '1px solid #eee' }}>
+                  <td style={{ padding: '12px', fontWeight: 'bold' }}>{s.StoreName}</td><td style={{ padding: '12px' }}>{s.FullName}</td><td style={{ fontWeight: 'bold', color: '#28a745' }}>Active</td>
+                  <td><button onClick={() => handleAction('BAN', s.SellerId)} style={{ background: '#ffc107', border: 'none', padding: '5px 10px', borderRadius: '4px', cursor:'pointer', fontWeight: 'bold' }}>⏸️ Suspend Shop</button></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+      </div>
     </div>
     <div style={{ background: '#fff3cd', padding: '20px', borderRadius: '10px', boxShadow: '0 2px 5px rgba(0,0,0,0.1)' }}>
       <h2 style={{ color: '#856404', marginTop: 0 }}>🏪 Seller Account Data (Raw)</h2>
-      <table style={{ width: '100%', background: 'white', borderCollapse: 'collapse', borderRadius: '8px', overflow: 'hidden' }}>
-        <thead><tr style={{ background: '#ffc107', textAlign: 'left', color: '#333' }}><th style={{ padding: '12px' }}>Name</th><th style={{ padding: '12px' }}>Email</th><th>Account Status</th><th style={{ textAlign: 'center' }}>Actions</th></tr></thead>
-        <tbody>
-          {allUsers.filter(u => u.Role === 'SELLER').map(u => (
-            <tr key={u.UserId} style={getRowStyle(u.IsDeleted)}>
-              <td style={{ padding: '12px' }}>{u.FullName}</td><td style={{ padding: '12px' }}>{u.Email}</td><td style={{ fontWeight: 'bold' }}>{u.IsDeleted ? <span style={{color:'red'}}>🔴 Deleted</span> : <span style={{color:'green'}}>✅ Active</span>}</td>
-              <td style={{ textAlign: 'center', padding: '12px' }}>{!u.IsDeleted && <button style={{ background: '#dc3545', color: 'white', border: 'none', padding: '5px 10px', borderRadius: '4px', cursor: 'pointer' }} onClick={() => handleAction('DELETE_USER', u.UserId)}>Delete User</button>}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', background: 'white', borderCollapse: 'collapse', borderRadius: '8px', overflow: 'hidden' }}>
+            <thead><tr style={{ background: '#ffc107', textAlign: 'left', color: '#333' }}><th style={{ padding: '12px' }}>Name</th><th style={{ padding: '12px' }}>Email</th><th>Account Status</th><th style={{ textAlign: 'center' }}>Actions</th></tr></thead>
+            <tbody>
+              {allUsers.filter(u => u.Role === 'SELLER').map(u => (
+                <tr key={u.UserId} style={getRowStyle(u.IsDeleted)}>
+                  <td style={{ padding: '12px' }}>{u.FullName}</td><td style={{ padding: '12px' }}>{u.Email}</td><td style={{ fontWeight: 'bold' }}>{u.IsDeleted ? <span style={{color:'red'}}>🔴 Deleted</span> : <span style={{color:'green'}}>✅ Active</span>}</td>
+                  <td style={{ textAlign: 'center', padding: '12px' }}>{!u.IsDeleted && <button style={{ background: '#dc3545', color: 'white', border: 'none', padding: '5px 10px', borderRadius: '4px', cursor: 'pointer' }} onClick={() => handleAction('DELETE_USER', u.UserId)}>Delete User</button>}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+      </div>
     </div>
   </div>
 );
@@ -192,25 +250,27 @@ export const BuyersTab = ({ activeBuyers, allUsers, handleAction }) => (
   <div className="tab-content fade-in">
     <div style={{ background: '#d1ecf1', padding: '20px', borderRadius: '10px', boxShadow: '0 2px 5px rgba(0,0,0,0.1)' }}>
       <h2 style={{ color: '#0c5460', marginTop: 0 }}>🛍️ Buyer Accounts ({activeBuyers.length})</h2>
-      <table style={{ width: '100%', background: 'white', borderCollapse: 'collapse', borderRadius: '8px', overflow: 'hidden' }}>
-        <thead><tr style={{ background: '#17a2b8', color: 'white', textAlign: 'left' }}><th style={{ padding: '12px' }}>Name</th><th>Email</th><th>Status</th><th style={{ textAlign: 'center' }}>Actions</th></tr></thead>
-        <tbody>
-          {allUsers.filter(u => u.Role === 'BUYER').map(u => (
-            <tr key={u.UserId} style={getRowStyle(u.IsDeleted)}>
-              <td style={{ padding: '12px' }}>{u.FullName}</td><td>{u.Email}</td>
-              <td style={{ fontWeight: 'bold' }}>{u.IsDeleted ? <span style={{color:'red'}}>🔴 Deleted</span> : u.IsBanned ? <span style={{color:'orange'}}>⛔ Banned</span> : <span style={{color:'green'}}>✅ Active</span>}</td>
-              <td style={{ textAlign: 'center', padding: '12px' }}>
-                {!u.IsDeleted && (
-                  <>
-                    <button onClick={() => handleAction(u.IsBanned ? 'UNBAN_USER' : 'BAN_USER', u.UserId)} style={{ background: u.IsBanned ? '#28a745' : '#ffc107', color: u.IsBanned ? 'white' : 'black', border: 'none', padding: '5px 10px', borderRadius: '4px', cursor: 'pointer', marginRight: '10px' }}>{u.IsBanned ? 'Unban' : 'Ban User'}</button>
-                    <button style={{ background: '#dc3545', color: 'white', border: 'none', padding: '5px 10px', borderRadius: '4px', cursor: 'pointer' }} onClick={() => handleAction('DELETE_USER', u.UserId)}>Delete</button>
-                  </>
-                )}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', background: 'white', borderCollapse: 'collapse', borderRadius: '8px', overflow: 'hidden' }}>
+            <thead><tr style={{ background: '#17a2b8', color: 'white', textAlign: 'left' }}><th style={{ padding: '12px' }}>Name</th><th>Email</th><th>Status</th><th style={{ textAlign: 'center' }}>Actions</th></tr></thead>
+            <tbody>
+              {allUsers.filter(u => u.Role === 'BUYER').map(u => (
+                <tr key={u.UserId} style={getRowStyle(u.IsDeleted)}>
+                  <td style={{ padding: '12px' }}>{u.FullName}</td><td>{u.Email}</td>
+                  <td style={{ fontWeight: 'bold' }}>{u.IsDeleted ? <span style={{color:'red'}}>🔴 Deleted</span> : u.IsBanned ? <span style={{color:'orange'}}>⛔ Banned</span> : <span style={{color:'green'}}>✅ Active</span>}</td>
+                  <td style={{ textAlign: 'center', padding: '12px' }}>
+                    {!u.IsDeleted && (
+                      <>
+                        <button onClick={() => handleAction(u.IsBanned ? 'UNBAN_USER' : 'BAN_USER', u.UserId)} style={{ background: u.IsBanned ? '#28a745' : '#ffc107', color: u.IsBanned ? 'white' : 'black', border: 'none', padding: '5px 10px', borderRadius: '4px', cursor: 'pointer', marginRight: '10px' }}>{u.IsBanned ? 'Unban' : 'Ban User'}</button>
+                        <button style={{ background: '#dc3545', color: 'white', border: 'none', padding: '5px 10px', borderRadius: '4px', cursor: 'pointer' }} onClick={() => handleAction('DELETE_USER', u.UserId)}>Delete</button>
+                      </>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+      </div>
     </div>
   </div>
 );

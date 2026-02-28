@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import axios from 'axios';
 
 const BuyerShopView = ({ user, selectedSeller, onBack, addToCart, refreshKey, targetProductId }) => {
@@ -21,6 +21,9 @@ const BuyerShopView = ({ user, selectedSeller, onBack, addToCart, refreshKey, ta
   // 🔥 NEW: Wishlist State
   const [wishlistIds, setWishlistIds] = useState([]);
 
+  // 🔥 NEW STATE: Urgency Badge
+  const [liveViewers, setLiveViewers] = useState(0);
+
   // 🔥 MOBILE OPTIMIZATION: Viewport detection
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
 
@@ -36,6 +39,36 @@ const BuyerShopView = ({ user, selectedSeller, onBack, addToCart, refreshKey, ta
   const storeBanner = shopData.StoreBanner || shopData.banner;
   const storeLogo = shopData.StoreLogo || shopData.logo;
   const storeDesc = shopData.StoreDescription || shopData.Description || shopData.description;
+
+  // 🔥 NEW: ANALYTICS LOGGING HELPER (Layered on top)
+  const logVisit = useCallback(async (pageType, pId = null) => {
+    if (!user || !sellerId) return;
+    try {
+      await axios.post('http://localhost:7071/api/LogTraffic', {
+        userId: user.userId,
+        sellerId: sellerId,
+        productId: pId,
+        pageType: pageType,
+        deviceType: isMobile ? 'Mobile' : 'Desktop'
+      });
+    } catch (e) {
+      console.warn("Traffic log failed silently");
+    }
+  }, [user, sellerId, isMobile]);
+
+  // 🔥 TRIGGER: Log Shop View when entering (only if no product is already selected)
+  useEffect(() => {
+    if (sellerId && !selectedProduct) {
+        logVisit('Shop');
+    }
+  }, [sellerId, !!selectedProduct, logVisit]);
+
+  // 🔥 TRIGGER: Log Product View when a detail view is opened
+  useEffect(() => {
+    if (selectedProduct) {
+        logVisit('Product', selectedProduct.id || selectedProduct.ProductId);
+    }
+  }, [selectedProduct, logVisit]);
 
   useEffect(() => {
     if (sellerId && !isNaN(sellerId)) {
@@ -69,19 +102,27 @@ const BuyerShopView = ({ user, selectedSeller, onBack, addToCart, refreshKey, ta
 
   useEffect(() => {
       // 1. Define the function INSIDE the effect
-      const fetchRating = async () => {
+      const fetchProductDetails = async () => {
           try {
-              const res = await axios.get(`http://localhost:7071/api/GetProductRating?productId=${selectedProduct.id}`);
-              setAvgRating(res.data.avgRating);
-              setTotalRatings(res.data.totalRatings);
+              const pId = selectedProduct.id || selectedProduct.ProductId;
+              
+              // Fetch Ratings
+              const ratingRes = await axios.get(`http://localhost:7071/api/GetProductRating?productId=${pId}`);
+              setAvgRating(ratingRes.data.avgRating);
+              setTotalRatings(ratingRes.data.totalRatings);
+
+              // 🔥 Fetch Live Viewers (Urgency Badge)
+              const viewerRes = await axios.get(`http://localhost:7071/api/GetProductLiveViewers?productId=${pId}`);
+              setLiveViewers(viewerRes.data.viewers);
+
           } catch (err) {
-              console.error("Failed to load rating", err);
+              console.error("Failed to load product details", err);
           }
       };
 
       // 2. Call it if a product is selected
       if (selectedProduct) {
-          fetchRating();
+          fetchProductDetails();
       }
   }, [selectedProduct]); // 3. Now selectedProduct is the only dependency needed!
 
@@ -248,6 +289,14 @@ const BuyerShopView = ({ user, selectedSeller, onBack, addToCart, refreshKey, ta
 
                 <div style={{ flex: '1 1 100%', padding: isMobile ? '0' : '10px', width: '100%', boxSizing: 'border-box' }}>
                     <div style={{ color: '#878787', fontSize: '14px', fontWeight: '500', marginBottom: '5px' }}>{selectedProduct.brand || selectedProduct.Brand || 'Generic Brand'}</div>
+                    
+                    {/* 🔥 THE URGENCY BADGE */}
+                    {liveViewers > 0 && (
+                        <div style={{ display: 'inline-block', background: '#fff5f5', color: '#dc3545', border: '1px solid #ffcdd2', padding: '4px 10px', borderRadius: '4px', fontSize: '12px', fontWeight: 'bold', marginBottom: '10px' }}>
+                            🔥 {liveViewers} {liveViewers === 1 ? 'person' : 'people'} viewed this recently
+                        </div>
+                    )}
+
                     <h1 style={{ fontSize: isMobile ? '18px' : '22px', color: '#212121', margin: '0 0 10px 0', fontWeight: 'normal', width: '100%', wordBreak: 'break-word' }}>{selectedProduct.name || selectedProduct.Name}</h1>
                     
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px', flexWrap: 'wrap', width: '100%', boxSizing: 'border-box' }}>
@@ -363,7 +412,7 @@ const BuyerShopView = ({ user, selectedSeller, onBack, addToCart, refreshKey, ta
                   >
                       {storeName}
                   </h2>
-                  <div style={{ color: '#878787', fontSize: '13px' }}><span style={{ color: '#388e3c', fontWeight: 'bold' }}>✓ Verified</span> • {products.length} Products</div>
+                  <div style={{ color: '#878787', fontSize: '14px' }}><span style={{ color: '#388e3c', fontWeight: 'bold' }}>✓ Verified</span> • {products.length} Products</div>
               </div>
           </div>
       </div>
