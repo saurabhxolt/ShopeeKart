@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { parseImages } from '../../utils/imageHelpers';
 
-const CartSidebar = ({ isOpen, onClose, cartItems, onRemove, onCheckout, isVerifyingStock, onUpdateQty }) => {
+// 🔥 ADDED: onProductClick prop
+const CartSidebar = ({ isOpen, onClose, cartItems, onRemove, onCheckout, isVerifyingStock, onUpdateQty, onProductClick }) => {
   const total = cartItems.reduce((sum, item) => sum + (Number(item.price) * (item.qty || 1)), 0);
 
-  // 🔥 ADDED: Viewport detection for mobile responsiveness
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
 
   useEffect(() => {
@@ -17,7 +17,6 @@ const CartSidebar = ({ isOpen, onClose, cartItems, onRemove, onCheckout, isVerif
     <>
       {isOpen && <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1100 }}></div>}
       <div style={{
-        // 🔥 FIX: Width is 100% on mobile to prevent horizontal overflow, 350px on desktop
         position: 'fixed', top: 0, right: isOpen ? 0 : (isMobile ? '-100%' : '-400px'), 
         width: isMobile ? '100%' : '350px', height: '100%',
         background: 'white', boxShadow: '-5px 0 15px rgba(0,0,0,0.1)', zIndex: 1200, transition: 'right 0.3s ease',
@@ -42,11 +41,24 @@ const CartSidebar = ({ isOpen, onClose, cartItems, onRemove, onCheckout, isVerif
 
               return (
                 <div key={idx} style={{ background: 'white', borderRadius: '8px', display: 'flex', gap: '15px', marginBottom: '15px', padding: '15px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', boxSizing: 'border-box', position: 'relative' }}>
-                  <img src={parseImages(item.imageUrl)[0]} alt="" style={{ width: '70px', height: '70px', objectFit: 'contain', borderRadius: '4px', background: '#f9f9f9', padding: '4px' }} />
+                  
+                  {/* 🔥 FIX: Updated onClick arguments to match App.js */}
+                  <img 
+                    src={parseImages(item.imageUrl)[0]} 
+                    alt="" 
+                    onClick={() => onProductClick && onProductClick(item.sellerId, item.StoreName || "Shop", item.id)}
+                    style={{ width: '70px', height: '70px', objectFit: 'contain', borderRadius: '4px', background: '#f9f9f9', padding: '4px', cursor: 'pointer' }} 
+                  />
                   
                   <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
                     <div style={{ paddingRight: '20px' }}>
-                      <div style={{ fontWeight: '500', fontSize: '14px', marginBottom: '5px', color: '#212121', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.name}</div>
+                      {/* 🔥 FIX: Updated onClick arguments to match App.js */}
+                      <div 
+                        onClick={() => onProductClick && onProductClick(item.sellerId, item.StoreName || "Shop", item.id)}
+                        style={{ fontWeight: '500', fontSize: '14px', marginBottom: '5px', color: '#212121', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'pointer' }}
+                      >
+                        {item.name}
+                      </div>
                       <div style={{ fontWeight: 'bold', color: '#212121', marginBottom: '10px', fontSize: '16px' }}>
                           ₹{item.price * (item.qty || 1)}
                       </div>

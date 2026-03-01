@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import axios from 'axios';
 
 // --- LAYOUT ---
@@ -49,35 +49,51 @@ function App() {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // 🔥 NEW: TRAFFIC LOGGING HELPER (Layered on top)
-  const logTraffic = useCallback(async (pageType, sellerId = null, productId = null) => {
+  // ==========================================
+  // 🔥 SMART BATCHING TRAFFIC LOGGING
+  // ==========================================
+  const trafficQueue = useRef([]);
+
+  const flushLogs = useCallback(() => {
+      if (trafficQueue.current.length === 0) return;
+      
+      const payload = [...trafficQueue.current]; 
+      trafficQueue.current = []; // Empty the queue immediately
+
+      // Send to backend via fetch with keepalive
+      fetch('http://localhost:7071/api/LogTrafficBatch', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+          keepalive: true // Ensures it sends even if the tab is closing
+      }).catch(e => console.warn("Traffic batch log failed silently"));
+  }, []);
+
+  const logTraffic = useCallback((pageType, sellerId = null, productId = null) => {
     if (!user) return;
-    try {
-      await axios.post('http://localhost:7071/api/LogTraffic', {
-        userId: user.userId,
-        sellerId: sellerId,
-        productId: productId,
-        pageType: pageType,
-        deviceType: isMobile ? 'Mobile' : 'Desktop'
-      });
-    } catch (e) {
-      console.warn("Traffic log failed silently");
-    }
-  }, [user, isMobile]);
+    
+    trafficQueue.current.push({
+      userId: user.userId,
+      sellerId: sellerId,
+      productId: productId,
+      pageType: pageType,
+      deviceType: isMobile ? 'Mobile' : 'Desktop',
+      timestamp: new Date().toISOString()
+    });
 
-  // 🔥 NEW: LOG HOME PAGE VISITS
-  useEffect(() => {
-    if (user?.role === 'BUYER' && !selectedSeller && globalSearch.trim() === '') {
-      logTraffic('Home');
+    // Flush automatically if we hit 50 clicks/views
+    if (trafficQueue.current.length >= 50) {
+        flushLogs();
     }
-  }, [selectedSeller, globalSearch, user?.role, logTraffic]);
+  }, [user, isMobile, flushLogs]);
 
-  // 🔥 NEW: LOG SEARCH QUERIES
+  // Catch tab closes and page refreshes to save remaining logs
   useEffect(() => {
-    if (globalSearch.trim().length > 1 && searchResults.length > 0 && !isSearching) {
-      logTraffic('Search');
-    }
-  }, [searchResults.length, isSearching, logTraffic]);
+      const handleUnload = () => flushLogs();
+      window.addEventListener('beforeunload', handleUnload);
+      return () => window.removeEventListener('beforeunload', handleUnload);
+  }, [flushLogs]);
+  // ==========================================
 
   // --- GLOBAL SEARCH EFFECT ---
   useEffect(() => {
@@ -103,10 +119,11 @@ function App() {
   // --- CART & CHECKOUT LOGIC ---
   const addToCart = async (product, isBuyNow = false) => {
     const targetSellerId = selectedSeller?.id || selectedSeller?.SellerId;
+    const targetSellerName = selectedSeller?.StoreName || selectedSeller?.name || "Unnamed Shop";
     if(!targetSellerId) return;
 
     if (isBuyNow) {
-        const buyNowItem = { ...product, qty: 1, sellerId: targetSellerId, maxStock: product.qty };
+        const buyNowItem = { ...product, qty: 1, sellerId: targetSellerId, StoreName: targetSellerName, maxStock: product.qty };
         setCheckoutSession({ items: [buyNowItem], isBuyNow: true });
         setIsCartOpen(false); 
         handleVerifyAndCheckout([buyNowItem]); 
@@ -130,7 +147,7 @@ function App() {
     if (existingIndex >= 0) {
         currentCart[existingIndex] = { ...currentCart[existingIndex], qty: currentCart[existingIndex].qty + 1 };
     } else {
-        currentCart.push({ ...product, qty: 1, sellerId: targetSellerId, maxStock: product.qty });
+        currentCart.push({ ...product, qty: 1, sellerId: targetSellerId, StoreName: targetSellerName, maxStock: product.qty });
     }
 
     setCartItems(currentCart);
@@ -142,11 +159,11 @@ function App() {
 
   const handleUpdateQty = (itemId, newQty) => {
       setCartItems(prev => prev.map(item => {
-          if (item.id === itemId) {
-              if (newQty < 1) return { ...item, qty: 0 };
-              if (newQty > (item.maxStock || 100)) return item;
-              return { ...item, qty: newQty };
-          }
+          if (Number(item.id) === Number(itemId)) {
+            if (newQty < 1) return { ...item, qty: 0 };
+            if (newQty > (item.maxStock || 100)) return item;
+            return { ...item, qty: newQty };
+        }
           return item;
       }).filter(item => item.qty > 0)); 
   };
@@ -210,6 +227,7 @@ function App() {
       if (feature === 'orders') {
           setIsBuyerOrdersOpen(true);
       } else if (feature === 'logout') {
+          flushLogs(); // 🔥 NEW: Send remaining logs before logging out
           setUser(null); setSelectedSeller(null); setCartItems([]);
       } else {
           setActiveAccountTab(feature);
@@ -293,13 +311,17 @@ function App() {
                     !selectedSeller ? (
                         <BuyerShopList onEnterShop={(shop) => setSelectedSeller(shop)} refreshKey={refreshKey} />
                     ) : (
-                        <BuyerShopView 
+                       <BuyerShopView 
                             user={user} 
                             selectedSeller={selectedSeller} 
                             onBack={() => { setSelectedSeller(null); setTargetProductId(null); }} 
                             addToCart={addToCart} 
                             refreshKey={refreshKey} 
                             targetProductId={targetProductId}
+                            cartItems={cartItems} 
+                            onUpdateQty={handleUpdateQty}
+                            // 🔥 PASS THE FUNCTION DOWN SO THE SHOP PAGE CAN USE BATCHING
+                            logTraffic={logTraffic} 
                         />
                     )
                 )}
@@ -310,7 +332,20 @@ function App() {
       <Footer />
 
       {/* MODALS */}
-      <CartSidebar isOpen={isCartOpen} onClose={() => setIsCartOpen(false)} cartItems={cartItems} onRemove={removeFromCart} onCheckout={() => { setCheckoutSession({ items: cartItems, isBuyNow: false }); handleVerifyAndCheckout(cartItems); }} isVerifyingStock={isVerifyingStock} onUpdateQty={handleUpdateQty} />
+      <CartSidebar 
+        isOpen={isCartOpen} 
+        onClose={() => setIsCartOpen(false)} 
+        cartItems={cartItems} 
+        onRemove={removeFromCart} 
+        onCheckout={() => { setCheckoutSession({ items: cartItems, isBuyNow: false }); handleVerifyAndCheckout(cartItems); }} 
+        isVerifyingStock={isVerifyingStock} 
+        onUpdateQty={handleUpdateQty} 
+        onProductClick={(sellerId, storeName, productId) => {
+            setIsCartOpen(false);
+            setTargetProductId(productId);
+            setSelectedSeller({ id: sellerId, StoreName: storeName });
+        }}
+      />
       <CheckoutModal isOpen={isCheckoutModalOpen} onClose={() => setIsCheckoutModalOpen(false)} cartItems={checkoutSession.items} cartTotal={checkoutSession.items.reduce((sum, item) => sum + (Number(item.price) * (item.qty || 1)), 0)} onConfirmOrder={handlePlaceOrder} userId={user?.userId} onViewOrders={() => { setIsCheckoutModalOpen(false); setIsBuyerOrdersOpen(true); }} />
       <BuyerOrdersModal isOpen={isBuyerOrdersOpen} onClose={() => setIsBuyerOrdersOpen(false)} userId={user?.userId} />
       <BuyerAccountModal isOpen={isAccountModalOpen} onClose={() => setIsAccountModalOpen(false)} activeTab={activeAccountTab} setActiveTab={setActiveAccountTab} user={user} onUpdateUser={setUser} onVisitShop={(sellerId, storeName, productId) => { setIsAccountModalOpen(false); setTargetProductId(productId); setSelectedSeller({ id: sellerId, StoreName: storeName }); }} />

@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import axios from 'axios';
-import UrgencyBadge from './UrgencyBadge';
+//import UrgencyBadge from './UrgencyBadge';
 
-const BuyerShopView = ({ user, selectedSeller, onBack, addToCart, refreshKey, targetProductId }) => {
+// 🔥 UPDATE 1: Added logTraffic to props
+const BuyerShopView = ({ user, selectedSeller, onBack, addToCart, refreshKey, targetProductId, cartItems = [], onUpdateQty, logTraffic }) =>  {
   const [products, setProducts] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
@@ -31,42 +32,46 @@ const BuyerShopView = ({ user, selectedSeller, onBack, addToCart, refreshKey, ta
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  const shopData = (selectedSeller && typeof selectedSeller.id === 'object') ? selectedSeller.id : selectedSeller || {};
-  const sellerId = shopData.SellerId || shopData.id;
-  const storeName = shopData.StoreName || shopData.name || "Unnamed Shop";
-  const storeBanner = shopData.StoreBanner || shopData.banner;
-  const storeLogo = shopData.StoreLogo || shopData.logo;
-  const storeDesc = shopData.StoreDescription || shopData.Description || shopData.description;
+  // 🔥 UPDATE 2: Fetch missing shop data if jumped from Cart/Search
+  const [enrichedShopData, setEnrichedShopData] = useState({});
 
-  // 🔥 NEW: ANALYTICS LOGGING HELPER (Layered on top)
-  const logVisit = useCallback(async (pageType, pId = null) => {
-    if (!user || !sellerId) return;
-    try {
-      await axios.post('http://localhost:7071/api/LogTraffic', {
-        userId: user.userId,
-        sellerId: sellerId,
-        productId: pId,
-        pageType: pageType,
-        deviceType: isMobile ? 'Mobile' : 'Desktop'
-      });
-    } catch (e) {
-      console.warn("Traffic log failed silently");
-    }
-  }, [user, sellerId, isMobile]);
-
-  // 🔥 TRIGGER: Log Shop View when entering (only if no product is already selected)
   useEffect(() => {
-    if (sellerId && !selectedProduct) {
-        logVisit('Shop');
-    }
-  }, [sellerId, !!selectedProduct, logVisit]);
+      const initialData = (selectedSeller && typeof selectedSeller.id === 'object') ? selectedSeller.id : selectedSeller || {};
+      const sid = initialData.SellerId || initialData.id;
 
-  // 🔥 TRIGGER: Log Product View when a detail view is opened
+      if (sid && !initialData.SupportPhone && !initialData.Phone) {
+          axios.get('http://localhost:7071/api/GetShops') 
+              .then(res => {
+                  const fullShop = res.data.find(s => String(s.id) === String(sid) || String(s.SellerId) === String(sid));
+                  setEnrichedShopData(fullShop || initialData);
+              })
+              .catch(err => {
+                  console.error("Failed to fetch full shop details", err);
+                  setEnrichedShopData(initialData);
+              });
+      } else {
+          setEnrichedShopData(initialData);
+      }
+  }, [selectedSeller]);
+
+  const sellerId = enrichedShopData.SellerId || enrichedShopData.id;
+  const storeName = enrichedShopData.StoreName || enrichedShopData.name || "Unnamed Shop";
+  const storeBanner = enrichedShopData.StoreBanner || enrichedShopData.banner;
+  const storeLogo = enrichedShopData.StoreLogo || enrichedShopData.logo;
+  const storeDesc = enrichedShopData.StoreDescription || enrichedShopData.Description || enrichedShopData.description;
+
+  // 🔥 UPDATE 3: Use the logTraffic prop passed from App.js
   useEffect(() => {
-    if (selectedProduct) {
-        logVisit('Product', selectedProduct.id || selectedProduct.ProductId);
+    if (sellerId && !selectedProduct && logTraffic) {
+        logTraffic('Shop', sellerId);
     }
-  }, [selectedProduct, logVisit]);
+  }, [sellerId, !!selectedProduct, logTraffic]);
+
+  useEffect(() => {
+    if (selectedProduct && logTraffic) {
+        logTraffic('Product', sellerId, selectedProduct.id || selectedProduct.ProductId);
+    }
+  }, [selectedProduct, sellerId, logTraffic]);
 
   useEffect(() => {
     if (sellerId && !isNaN(sellerId)) {
@@ -77,34 +82,25 @@ const BuyerShopView = ({ user, selectedSeller, onBack, addToCart, refreshKey, ta
   }, [sellerId, refreshKey]);
 
   // 🔥 NEW: Fetch user's wishlist when component mounts
-  // 🔥 FIX: Re-sync wishlist from DB every time the user or shop changes
   useEffect(() => {
     const syncWishlist = async () => {
         if (user?.userId) {
             try {
-                // Add a timestamp to prevent browser caching of the GET request
                 const res = await axios.get(`http://localhost:7071/api/GetWishlist?userId=${user.userId}&t=${Date.now()}`);
-                
-                // 🔥 Ensure we extract the ID correctly regardless of casing
                 const ids = res.data.map(item => item.id || item.ProductId);
-                console.log("Wishlist IDs synced from DB:", ids);
                 setWishlistIds(ids);
             } catch (err) {
                 console.error("Wishlist Sync Error:", err);
             }
         }
     };
-
     syncWishlist();
-  }, [user?.userId, refreshKey]); // Sync whenever user changes or shop refreshes
+  }, [user?.userId, refreshKey]); 
 
   useEffect(() => {
-      // 1. Define the function INSIDE the effect
       const fetchProductDetails = async () => {
           try {
               const pId = selectedProduct.id || selectedProduct.ProductId;
-              
-              // Fetch Ratings
               const ratingRes = await axios.get(`http://localhost:7071/api/GetProductRating?productId=${pId}`);
               setAvgRating(ratingRes.data.avgRating);
               setTotalRatings(ratingRes.data.totalRatings);
@@ -113,19 +109,17 @@ const BuyerShopView = ({ user, selectedSeller, onBack, addToCart, refreshKey, ta
            }
       };
 
-      // 2. Call it if a product is selected
       if (selectedProduct) {
           fetchProductDetails();
       }
-  }, [selectedProduct]); // 3. Now selectedProduct is the only dependency needed!
+  }, [selectedProduct]); 
 
-  // 🔥 UPGRADED: Auto-open the exact product with safe Number() casting
+  // 🔥 UPGRADED: Auto-open the exact product with safe String() casting
   useEffect(() => {
       if (targetProductId && products.length > 0) {
-          // Convert both sides to Number to guarantee a match!
           const productToOpen = products.find(p => 
-              Number(p.id) === Number(targetProductId) || 
-              Number(p.ProductId) === Number(targetProductId)
+              String(p.id) === String(targetProductId) || 
+              String(p.ProductId) === String(targetProductId)
           );
           
           if (productToOpen) {
@@ -137,13 +131,11 @@ const BuyerShopView = ({ user, selectedSeller, onBack, addToCart, refreshKey, ta
       }
   }, [targetProductId, products]);
 
-  // 🔥 NEW: Toggle Wishlist Function (Optimistic UI Update)
   const handleWishlistToggle = async (e, productId) => {
-      e.stopPropagation(); // Prevents opening the product detail modal
+      e.stopPropagation(); 
       
       const isCurrentlyWishlisted = wishlistIds.includes(productId);
       
-      // Update UI instantly
       if (isCurrentlyWishlisted) {
           setWishlistIds(prev => prev.filter(id => id !== productId));
       } else {
@@ -157,7 +149,6 @@ const BuyerShopView = ({ user, selectedSeller, onBack, addToCart, refreshKey, ta
           });
       } catch (err) {
           alert("Failed to update wishlist.");
-          // Revert if API fails
           if (isCurrentlyWishlisted) setWishlistIds(prev => [...prev, productId]);
           else setWishlistIds(prev => prev.filter(id => id !== productId));
       }
@@ -165,7 +156,6 @@ const BuyerShopView = ({ user, selectedSeller, onBack, addToCart, refreshKey, ta
 
   const categories = [...new Set(products.map(p => p.category || p.Category).filter(Boolean))];
 
-  // 🔥 UPDATED LOGIC: Filter AND then Sort
   const filteredProducts = useMemo(() => {
     let result = products.filter(p => {
         const matchesCategory = categoryFilter ? (p.category || p.Category) === categoryFilter : true;
@@ -176,12 +166,10 @@ const BuyerShopView = ({ user, selectedSeller, onBack, addToCart, refreshKey, ta
         return searchWords.every(word => searchableText.includes(word));
     });
 
-    // Apply Sorting logic
     return result.sort((a, b) => {
         if (sortBy === "priceLow") return (a.price || a.Price) - (b.price || b.Price);
         if (sortBy === "priceHigh") return (b.price || b.Price) - (a.price || a.Price);
         if (sortBy === "newest") {
-            // Sort by CreatedAt descending (Newest first)
             return new Date(b.createdAt || b.CreatedAt) - new Date(a.createdAt || a.CreatedAt);
         }
         return 0;
@@ -196,10 +184,6 @@ const BuyerShopView = ({ user, selectedSeller, onBack, addToCart, refreshKey, ta
       } catch (e) { return [imageStr]; }
   };
 
-  // ============================================================================
-  // RENDER HELPERS
-  // ============================================================================
-  
   const renderSellerProfileModal = () => {
       if (!showSellerProfile) return null;
       return (
@@ -217,13 +201,13 @@ const BuyerShopView = ({ user, selectedSeller, onBack, addToCart, refreshKey, ta
                     <div style={{ width: '100%', boxSizing: 'border-box', background: '#f8f9fa', borderRadius: '8px', padding: '20px', border: '1px solid #eee' }}>
                         <h4 style={{ margin: '0 0 15px 0', color: '#2874f0', borderBottom: '1px solid #ddd', paddingBottom: '10px' }}>Contact Details</h4>
                         <p style={{ margin: '0 0 12px 0', fontSize: '14px', display: 'flex', gap: '10px', alignItems: 'flex-start', wordBreak: 'break-word' }}>
-                            <span style={{ fontSize: '16px' }}>📞</span> <span><strong>Phone:</strong> <br/> {shopData.SupportPhone || shopData.Phone || 'Not provided'}</span>
+                            <span style={{ fontSize: '16px' }}>📞</span> <span><strong>Phone:</strong> <br/> {enrichedShopData.SupportPhone || enrichedShopData.Phone || 'Not provided'}</span>
                         </p>
                         <p style={{ margin: '0 0 12px 0', fontSize: '14px', display: 'flex', gap: '10px', alignItems: 'flex-start', wordBreak: 'break-word' }}>
-                            <span style={{ fontSize: '16px' }}>✉️</span> <span><strong>Email:</strong> <br/> {shopData.SupportEmail || shopData.Email || 'Not provided'}</span>
+                            <span style={{ fontSize: '16px' }}>✉️</span> <span><strong>Email:</strong> <br/> {enrichedShopData.SupportEmail || enrichedShopData.Email || 'Not provided'}</span>
                         </p>
                         <p style={{ margin: '0 0 12px 0', fontSize: '14px', display: 'flex', gap: '10px', alignItems: 'flex-start', wordBreak: 'break-word' }}>
-                            <span style={{ fontSize: '16px' }}>📍</span> <span><strong>Pickup Address:</strong> <br/> {shopData.PickupAddress || shopData.Address || 'Not provided'}</span>
+                            <span style={{ fontSize: '16px' }}>📍</span> <span><strong>Pickup Address:</strong> <br/> {enrichedShopData.PickupAddress || enrichedShopData.Address || 'Not provided'}</span>
                         </p>
                         {storeDesc && (
                             <div style={{ marginTop: '15px', paddingTop: '15px', borderTop: '1px solid #ddd', width: '100%' }}>
@@ -238,9 +222,6 @@ const BuyerShopView = ({ user, selectedSeller, onBack, addToCart, refreshKey, ta
       );
   };
 
-  // ============================================================================
-  // VIEW 1: PRODUCT DETAIL PAGE 
-  // ============================================================================
   if (selectedProduct) {
       const productImages = getImages(selectedProduct.imageUrl || selectedProduct.ImageUrl);
       const mainImage = productImages[activeImageIndex] || 'https://via.placeholder.com/400';
@@ -250,7 +231,12 @@ const BuyerShopView = ({ user, selectedSeller, onBack, addToCart, refreshKey, ta
           ? Math.round(((pOrigPrice - pPrice) / pOrigPrice) * 100) 
           : 0;
       const badgeColor = avgRating >= 3.5 ? '#388e3c' : (avgRating >= 2.5 ? '#ff9f00' : '#d32f2f');
-
+      
+      // 🔥 UPDATE 4: Use String() to ensure alphanumeric SKUs match correctly
+      const currentProductId = selectedProduct.id || selectedProduct.ProductId;
+      const cartItem = cartItems.find(item => String(item.id || item.ProductId) === String(currentProductId));
+      const isAddedToCart = !!cartItem;
+      
       return (
         <div style={{ width: '100%', boxSizing: 'border-box', maxWidth: '1200px', margin: '0 auto', padding: isMobile ? '10px' : '20px', background: 'white', minHeight: '80vh', overflowX: 'hidden' }}>
             <button onClick={() => setSelectedProduct(null)} style={{ marginBottom: 20, padding: '8px 20px', cursor: 'pointer', borderRadius: '4px', border: '1px solid #ccc', background: 'white', fontWeight: 'bold' }}>
@@ -268,7 +254,6 @@ const BuyerShopView = ({ user, selectedSeller, onBack, addToCart, refreshKey, ta
                     </div>
                     <div style={{ flex: 1, border: '1px solid #f0f0f0', display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '10px', height: isMobile ? '350px' : '600px', position: 'relative', width: '100%', boxSizing: 'border-box', overflow: 'hidden' }}>
                         
-                        {/* Wishlist Heart on Main Image */}
                         <div 
                             onClick={(e) => handleWishlistToggle(e, selectedProduct.id || selectedProduct.ProductId)} 
                             style={{ position: 'absolute', top: 20, right: 20, cursor: 'pointer', fontSize: isMobile ? '24px' : '32px', zIndex: 10, background: 'rgba(255,255,255,0.8)', borderRadius: '50%', width: isMobile ? '40px' : '50px', height: isMobile ? '40px' : '50px', display: 'flex', justifyContent: 'center', alignItems: 'center', boxShadow: '0 2px 5px rgba(0,0,0,0.1)' }}
@@ -300,7 +285,6 @@ const BuyerShopView = ({ user, selectedSeller, onBack, addToCart, refreshKey, ta
                         </div>
                     </div>
 
-                    {/* --- PRICE BLOCK --- */}
                     <div style={{ display: 'flex', alignItems: 'flex-end', gap: '12px', marginBottom: '15px', width: '100%', boxSizing: 'border-box' }}>
                         <span style={{ fontSize: '28px', fontWeight: '500', color: '#212121' }}>₹{pPrice}</span>
                         {discount > 0 && (
@@ -310,12 +294,6 @@ const BuyerShopView = ({ user, selectedSeller, onBack, addToCart, refreshKey, ta
                             </>
                         )}
                     </div>
-
-                    {/* 🔥 FOMO URGENCY BADGE ADDED HERE */}
-                    <div style={{ marginBottom: '25px' }}>
-                        <UrgencyBadge productId={selectedProduct.id || selectedProduct.ProductId} />
-                    </div>
-
                     <div style={{ borderTop: '1px solid #f0f0f0', borderBottom: '1px solid #f0f0f0', padding: '20px 0', marginBottom: '20px', width: '100%', boxSizing: 'border-box' }}>
                         <div style={{ display: 'flex', alignItems: 'flex-start', gap: '15px', marginBottom: '15px' }}>
                             <span style={{ fontSize: '18px' }}>📍</span>
@@ -353,14 +331,23 @@ const BuyerShopView = ({ user, selectedSeller, onBack, addToCart, refreshKey, ta
 
                     <div style={{ display: 'flex', gap: '15px', marginTop: '30px', width: '100%', boxSizing: 'border-box' }}>
                         {Number(selectedProduct.qty || selectedProduct.Stock) > 0 ? (
-                            <> 
-                                <button onClick={() => addToCart(selectedProduct, false)} style={{ flex: 1, padding: '16px', background: '#ff9f00', color: 'white', border: 'none', borderRadius: '4px', fontSize: '16px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '10px' }}>
-                                    🛒 ADD TO CART
-                                </button>
-                                <button onClick={() => addToCart(selectedProduct, true)} style={{ flex: 1, padding: '16px', background: '#fb641b', color: 'white', border: 'none', borderRadius: '4px', fontSize: '16px', fontWeight: 'bold', cursor: 'pointer' }}>
-                                    ⚡ BUY NOW
-                                </button>
-                            </>
+                              <>
+                                  {isAddedToCart ? (
+                                      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between', border: '2px solid #ff9f00', borderRadius: '4px', background: 'white' }}>
+                                          <button onClick={() => onUpdateQty(currentProductId, cartItem.qty - 1)} style={{ flex: 1, padding: '15px', background: 'transparent', color: '#ff9f00', border: 'none', fontSize: '20px', fontWeight: 'bold', cursor: 'pointer' }}>-</button>
+                                          <span style={{ fontSize: '18px', fontWeight: 'bold', color: '#212121', padding: '0 15px' }}>{cartItem.qty}</span>
+                                          <button onClick={() => onUpdateQty(currentProductId, cartItem.qty + 1)} style={{ flex: 1, padding: '15px', background: 'transparent', color: '#ff9f00', border: 'none', fontSize: '20px', fontWeight: 'bold', cursor: 'pointer' }}>+</button>
+                                      </div>
+                                  ) : (
+                                      <button onClick={() => addToCart(selectedProduct, false)} style={{ flex: 1, padding: '16px', background: '#ff9f00', color: 'white', border: 'none', borderRadius: '4px', fontSize: '16px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '10px' }}>
+                                          🛒 ADD TO CART
+                                      </button>
+                                  )}
+
+                                  <button onClick={() => addToCart(selectedProduct, true)} style={{ flex: 1, padding: '16px', background: '#fb641b', color: 'white', border: 'none', borderRadius: '4px', fontSize: '16px', fontWeight: 'bold', cursor: 'pointer' }}>
+                                      ⚡ BUY NOW
+                                  </button>
+                              </>
                         ) : (
                             <button onClick={() => alert("We'll email you when this item is back in stock!")} style={{ flex: 1, padding: '16px', background: 'white', color: '#2874f0', border: '1px solid #2874f0', borderRadius: '4px', fontSize: '16px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '10px' }}>
                                 🔔 NOTIFY ME
@@ -378,9 +365,6 @@ const BuyerShopView = ({ user, selectedSeller, onBack, addToCart, refreshKey, ta
       );
   }
 
-  // ============================================================================
-  // VIEW 2: PRODUCT LISTING GRID 
-  // ============================================================================
   return (
     <div style={{ width: '100%', boxSizing: 'border-box', maxWidth: '1400px', margin: '0 auto', paddingBottom: '50px', padding: isMobile ? '0 10px' : '0', overflowX: 'hidden' }}>
       
@@ -418,7 +402,6 @@ const BuyerShopView = ({ user, selectedSeller, onBack, addToCart, refreshKey, ta
                 {categories.map((cat, i) => <option key={i} value={cat}>{cat}</option>)}
             </select>
 
-            {/* 🔥 NEW DROP DOWN: Sorting */}
             <select 
                 value={sortBy} 
                 onChange={(e) => setSortBy(e.target.value)} 
@@ -431,7 +414,6 @@ const BuyerShopView = ({ user, selectedSeller, onBack, addToCart, refreshKey, ta
           </div>
       </div>
 
-      {/* 🔥 GRID OPTIMIZATION: 2 columns on mobile */}
       <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(auto-fill, minmax(240px, 1fr))', gap: isMobile ? '10px' : '15px', width: '100%', boxSizing: 'border-box' }}>
         {filteredProducts.length === 0 ? (
             <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '60px', color: '#878787', width: '100%', boxSizing: 'border-box' }}><h3>No products match your search.</h3></div>
@@ -452,7 +434,6 @@ const BuyerShopView = ({ user, selectedSeller, onBack, addToCart, refreshKey, ta
                       onMouseOver={(e) => !isMobile && (e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)')}
                       onMouseOut={(e) => e.currentTarget.style.boxShadow = 'none'}
                   >
-                      {/* 🔥 NEW: Wishlist Icon on Listing Card */}
                       <div 
                           onClick={(e) => handleWishlistToggle(e, p.id || p.ProductId)} 
                           style={{ position: 'absolute', top: 8, right: 8, cursor: 'pointer', fontSize: isMobile ? '18px' : '20px', zIndex: 10, background: 'rgba(255,255,255,0.8)', borderRadius: '50%', width: isMobile ? '28px' : '32px', height: isMobile ? '28px' : '32px', display: 'flex', justifyContent: 'center', alignItems: 'center' }}
