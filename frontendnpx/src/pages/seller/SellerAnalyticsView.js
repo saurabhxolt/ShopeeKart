@@ -20,17 +20,26 @@ const SellerAnalyticsView = ({
                 </div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)', gap: '20px', marginBottom: '30px' }}>
+            {/* 🔥 UPDATED GRID: Now 4 columns to include Shop Views */}
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(4, 1fr)', gap: '20px', marginBottom: '30px' }}>
                 
-                {/* 🔥 CARD 1: Total Views (Replaced redundant Store Visits) */}
-                <div style={{ background: '#f6d365', padding: '25px', borderRadius: '12px', textAlign: 'center', boxShadow: '0 4px 10px rgba(0,0,0,0.1)' }}>
-                    <div style={{ fontSize: '12px', fontWeight: 'bold', textTransform: 'uppercase', color: '#bf360c' }}>Total Product Views</div>
-                    <div style={{ fontSize: '32px', fontWeight: 'bold', marginTop: '10px' }}>
-                        {isTrafficLoading ? '⏳' : (trafficData?.summary?.TotalHits || trafficData?.summary?.TotalProductViews || 0)}
+                {/* 🔥 CARD 1: Total Shop Views (Top of the Funnel) */}
+                <div style={{ background: '#a1c4fd', padding: '25px', borderRadius: '12px', textAlign: 'center', boxShadow: '0 4px 10px rgba(0,0,0,0.1)' }}>
+                    <div style={{ fontSize: '12px', fontWeight: 'bold', textTransform: 'uppercase', color: '#003366' }}>Total Shop Visits</div>
+                    <div style={{ fontSize: '32px', fontWeight: 'bold', marginTop: '10px', color: '#003366' }}>
+                        {isTrafficLoading ? '⏳' : (trafficData?.summary?.TotalShopViews || 0)}
                     </div>
                 </div>
 
-                {/* 🔥 CARD 2: Unique Shoppers (Now strictly using UserIds) */}
+                {/* CARD 2: Total Product Views (Bottom of the Funnel) */}
+                <div style={{ background: '#f6d365', padding: '25px', borderRadius: '12px', textAlign: 'center', boxShadow: '0 4px 10px rgba(0,0,0,0.1)' }}>
+                    <div style={{ fontSize: '12px', fontWeight: 'bold', textTransform: 'uppercase', color: '#bf360c' }}>Total Product Clicks</div>
+                    <div style={{ fontSize: '32px', fontWeight: 'bold', marginTop: '10px', color: '#bf360c' }}>
+                        {isTrafficLoading ? '⏳' : (trafficData?.summary?.TotalProductViews || 0)}
+                    </div>
+                </div>
+
+                {/* CARD 3: Unique Shoppers */}
                 <div style={{ background: '#84fab0', padding: '25px', borderRadius: '12px', textAlign: 'center', boxShadow: '0 4px 10px rgba(0,0,0,0.1)' }}>
                     <div style={{ fontSize: '12px', fontWeight: 'bold', textTransform: 'uppercase', color: '#006266' }}>Unique Shoppers</div>
                     <div style={{ fontSize: '32px', fontWeight: 'bold', marginTop: '10px', color: '#006266' }}>
@@ -38,11 +47,29 @@ const SellerAnalyticsView = ({
                     </div>
                 </div>
 
-                {/* 🔥 CARD 3: Mobile Shoppers (New! Shows device breakdown) */}
-                <div style={{ background: '#fda085', padding: '25px', borderRadius: '12px', textAlign: 'center', boxShadow: '0 4px 10px rgba(0,0,0,0.1)' }}>
-                    <div style={{ fontSize: '12px', fontWeight: 'bold', textTransform: 'uppercase', color: '#fff' }}>Mobile Shoppers</div>
-                    <div style={{ fontSize: '32px', fontWeight: 'bold', marginTop: '10px', color: '#fff' }}>
-                        {isTrafficLoading ? '⏳' : (trafficData?.summary?.MobileUsers || 0)}
+                {/* 🔥 CARD 4: Device Breakdown (Mobile vs Desktop) */}
+                <div style={{ background: '#fda085', padding: '20px', borderRadius: '12px', textAlign: 'center', boxShadow: '0 4px 10px rgba(0,0,0,0.1)' }}>
+                    <div style={{ fontSize: '12px', fontWeight: 'bold', textTransform: 'uppercase', color: '#fff', marginBottom: '10px' }}>Device Breakdown</div>
+                    
+                    <div style={{ display: 'flex', justifyContent: 'center', gap: '20px', alignItems: 'center' }}>
+                        {/* Mobile Side */}
+                        <div>
+                            <div style={{ fontSize: '13px', color: '#fff', opacity: 0.9 }}>📱 Mobile</div>
+                            <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#fff' }}>
+                                {isTrafficLoading ? '⏳' : (trafficData?.summary?.MobileUsers || 0)}
+                            </div>
+                        </div>
+
+                        {/* Vertical Divider */}
+                        <div style={{ width: '1px', height: '40px', background: 'rgba(255,255,255,0.4)' }}></div>
+
+                        {/* Desktop Side */}
+                        <div>
+                            <div style={{ fontSize: '13px', color: '#fff', opacity: 0.9 }}>💻 Desktop</div>
+                            <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#fff' }}>
+                                {isTrafficLoading ? '⏳' : (trafficData?.summary?.DesktopUsers || 0)}
+                            </div>
+                        </div>
                     </div>
                 </div>
 

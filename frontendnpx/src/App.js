@@ -311,18 +311,21 @@ function App() {
                     !selectedSeller ? (
                         <BuyerShopList onEnterShop={(shop) => setSelectedSeller(shop)} refreshKey={refreshKey} />
                     ) : (
-                       <BuyerShopView 
-                            user={user} 
-                            selectedSeller={selectedSeller} 
-                            onBack={() => { setSelectedSeller(null); setTargetProductId(null); }} 
-                            addToCart={addToCart} 
-                            refreshKey={refreshKey} 
-                            targetProductId={targetProductId}
-                            cartItems={cartItems} 
-                            onUpdateQty={handleUpdateQty}
-                            // 🔥 PASS THE FUNCTION DOWN SO THE SHOP PAGE CAN USE BATCHING
-                            logTraffic={logTraffic} 
-                        />
+                                      <BuyerShopView
+                                          user={user}
+                                          selectedSeller={selectedSeller}
+                                          onBack={() => { setSelectedSeller(null); setTargetProductId(null); }}
+                                          addToCart={addToCart}
+                                          refreshKey={refreshKey}
+                                          targetProductId={targetProductId}
+
+                                          // 🔥 ADD THIS NEW PROP:
+                                          setTargetProductId={setTargetProductId}
+
+                                          cartItems={cartItems}
+                                          onUpdateQty={handleUpdateQty}
+                                          logTraffic={logTraffic}
+                                      />
                     )
                 )}
               </>

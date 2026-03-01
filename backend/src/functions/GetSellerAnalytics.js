@@ -26,29 +26,40 @@ app.http('GetSellerAnalytics', {
 
                     IF @sId IS NOT NULL
                     BEGIN
-                        -- 🔥 1. Total Views (Replaces redundant Store/Product view split)
-                        SELECT 'SUMMARY' as RowType, 'TotalHits' as Label, CAST(COUNT(*) AS VARCHAR) as Value, '' as Extra 
-                        FROM TrafficLogs WHERE SellerId = @sId AND CreatedAt >= DATEADD(day, -@days, GETDATE())
+                        -- 🔥 1. Total Shop Visits (Top of Funnel - People hitting the storefront)
+                        SELECT 'SUMMARY' as RowType, 'TotalShopViews' as Label, CAST(COUNT(*) AS VARCHAR) as Value, '' as Extra 
+                        FROM TrafficLogs WHERE SellerId = @sId AND PageType = 'Shop' AND CreatedAt >= DATEADD(day, -@days, GETDATE())
                         
                         UNION ALL
                         
-                        -- 🔥 2. Unique Shoppers (Strictly using verified UserIds now)
+                        -- 🔥 2. Total Product Clicks (Bottom of Funnel - People clicking into items)
+                        SELECT 'SUMMARY', 'TotalProductViews', CAST(COUNT(*) AS VARCHAR), '' 
+                        FROM TrafficLogs WHERE SellerId = @sId AND PageType = 'Product' AND CreatedAt >= DATEADD(day, -@days, GETDATE())
+                        
+                        UNION ALL
+                        
+                        -- 🔥 3. Unique Shoppers (Distinct user IDs)
                         SELECT 'SUMMARY', 'UniqueShoppers', CAST(COUNT(DISTINCT UserId) AS VARCHAR), '' 
                         FROM TrafficLogs WHERE SellerId = @sId AND CreatedAt >= DATEADD(day, -@days, GETDATE())
                         
                         UNION ALL
 
-                        -- 🔥 3. Mobile Users (Feeds the new 3rd UI Card)
-                        SELECT 'SUMMARY', 'MobileUsers', CAST(ISNULL(SUM(CASE WHEN DeviceType = 'Mobile' THEN 1 ELSE 0 END), 0) AS VARCHAR), ''
+                        -- 🔥 4. Device Breakdown (Distinct Users by Device)
+                        SELECT 'SUMMARY', 'MobileUsers', CAST(COUNT(DISTINCT CASE WHEN DeviceType = 'Mobile' THEN UserId END) AS VARCHAR), ''
+                        FROM TrafficLogs WHERE SellerId = @sId AND CreatedAt >= DATEADD(day, -@days, GETDATE())
+                        
+                        UNION ALL
+
+                        SELECT 'SUMMARY', 'DesktopUsers', CAST(COUNT(DISTINCT CASE WHEN DeviceType = 'Desktop' THEN UserId END) AS VARCHAR), ''
                         FROM TrafficLogs WHERE SellerId = @sId AND CreatedAt >= DATEADD(day, -@days, GETDATE())
                         
                         UNION ALL
                         
-                        -- 🔥 4. Item Level Product Stats
+                        -- 🔥 5. Item Level Product Stats (List for the table)
                         SELECT 'PRODUCT', p.Name, CAST(COUNT(t.LogId) AS VARCHAR), p.Category
                         FROM TrafficLogs t
                         JOIN Products p ON t.ProductId = p.ProductId
-                        WHERE t.SellerId = @sId AND t.CreatedAt >= DATEADD(day, -@days, GETDATE())
+                        WHERE t.SellerId = @sId AND t.PageType = 'Product' AND t.CreatedAt >= DATEADD(day, -@days, GETDATE())
                         GROUP BY p.Name, p.Category;
                     END
                 `;
