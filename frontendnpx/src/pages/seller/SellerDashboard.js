@@ -8,6 +8,7 @@ import SellerProfileModal from '../../components/profile/SellerProfileModal';
 // 🔥 IMPORT YOUR NEW SPLIT COMPONENTS
 import SellerAnalyticsView from './SellerAnalyticsView';
 import SellerInventoryView from './SellerInventoryView';
+import SellerSubscriptionView from './SellerSubscriptionView'; // 🔥 NEW IMPORT
 
 const SellerDashboard = ({ user }) => {
   const [sellerProducts, setSellerProducts] = useState([]);
@@ -16,7 +17,7 @@ const SellerDashboard = ({ user }) => {
   const [isOrdersModalOpen, setIsOrdersModalOpen] = useState(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
 
-  // 🔥 NEW NAVIGATION: Toggle between Inventory and Analytics
+  // 🔥 NEW NAVIGATION: Toggle between Inventory, Analytics, and Subscription
   const [viewMode, setViewMode] = useState('inventory'); 
 
   const [searchTerm, setSearchTerm] = useState('');
@@ -253,19 +254,17 @@ const SellerDashboard = ({ user }) => {
       )}
 
       <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', justifyContent: 'space-between', alignItems: isMobile ? 'stretch' : 'center', marginBottom: '20px', gap: isMobile ? '15px' : '0' }}>
-          <h2 style={{ margin: 0, fontSize: isMobile ? '22px' : '24px' }}>🏪 {viewMode === 'inventory' ? 'Seller Dashboard' : 'Store Insights'}</h2>
+          <h2 style={{ margin: 0, fontSize: isMobile ? '22px' : '24px' }}>
+              🏪 {viewMode === 'inventory' ? 'Seller Dashboard' : viewMode === 'analytics' ? 'Store Insights' : 'Subscription Plan'}
+          </h2>
           
           <div style={{ display: 'flex', gap: '10px', flexDirection: isMobile ? 'column' : 'row' }}>
-            {/* 🔥 Toggle button for Insights view */}
-            {viewMode === 'inventory' ? (
-                <button onClick={() => setViewMode('analytics')} style={{ backgroundColor: '#f6d365', color: '#bf360c', border: 'none', padding: '10px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>
-                    📈 View Insights
-                </button>
-            ) : (
-                <button onClick={() => setViewMode('inventory')} style={{ backgroundColor: '#eee', color: '#333', border: 'none', padding: '10px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>
-                    📦 Manage Products
-                </button>
-            )}
+            {/* 🔥 Updated Toggle button group for all 3 views */}
+            <div style={{ display: 'flex', background: '#eee', padding: '4px', borderRadius: '8px', gap: '4px' }}>
+                <button onClick={() => setViewMode('inventory')} style={{ border: 'none', padding: '8px 12px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px', background: viewMode === 'inventory' ? 'white' : 'transparent', color: viewMode === 'inventory' ? '#2874f0' : '#666', boxShadow: viewMode === 'inventory' ? '0 2px 4px rgba(0,0,0,0.1)' : 'none' }}>📦 Products</button>
+                <button onClick={() => setViewMode('analytics')} style={{ border: 'none', padding: '8px 12px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px', background: viewMode === 'analytics' ? 'white' : 'transparent', color: viewMode === 'analytics' ? '#2874f0' : '#666', boxShadow: viewMode === 'analytics' ? '0 2px 4px rgba(0,0,0,0.1)' : 'none' }}>📈 Insights</button>
+                <button onClick={() => setViewMode('subscription')} style={{ border: 'none', padding: '8px 12px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px', background: viewMode === 'subscription' ? 'white' : 'transparent', color: viewMode === 'subscription' ? '#2874f0' : '#666', boxShadow: viewMode === 'subscription' ? '0 2px 4px rgba(0,0,0,0.1)' : 'none' }}>💎 My Plan</button>
+            </div>
             
             <button onClick={() => setIsProfileModalOpen(true)} style={{ backgroundColor: '#6c757d', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', width: isMobile ? '100%' : 'auto' }}>
                 ⚙️ Store Settings
@@ -286,6 +285,10 @@ const SellerDashboard = ({ user }) => {
               analyticsDays={analyticsDays} setAnalyticsDays={setAnalyticsDays}
               analyticsSort={analyticsSort} setAnalyticsSort={setAnalyticsSort}
               setViewMode={setViewMode} sortedProductStats={sortedProductStats}
+          />
+      ) : viewMode === 'subscription' ? (
+          <SellerSubscriptionView 
+              user={user} isMobile={isMobile} revenue={dashboardMetrics.revenue} 
           />
       ) : (
           <SellerInventoryView 

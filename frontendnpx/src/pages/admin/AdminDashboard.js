@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { AnalyticsCards, OverviewTab, OrdersTab, ProductsTab, SellersTab, BuyersTab, SecurityTab, IntelligenceTab } from './AdminTabs';
+// 🔥 Added LiveTrafficTab to the imports
+import { AnalyticsCards, OverviewTab, OrdersTab, ProductsTab, SellersTab, BuyersTab, SecurityTab, IntelligenceTab, LiveTrafficTab } from './AdminTabs';
 import { ManageOrderModal, ProductReviewModal, SellerReviewModal } from './AdminModals';
 
 const TabButton = ({ label, isActive, onClick, alertCount }) => (
@@ -19,7 +20,6 @@ function AdminDashboard({ user }) {
   const [securityLogs, setSecurityLogs] = useState([]);
   const [isLogsLoading, setIsLogsLoading] = useState(false);
 
-  // Analytics State
   const [trafficData, setTrafficData] = useState({ 
     summary: { TotalHits: 0, UniqueShoppers: 0, MobileUsers: 0, DesktopUsers: 0 }, 
     topShops: [],
@@ -29,10 +29,9 @@ function AdminDashboard({ user }) {
   const [marketplaceStats, setMarketplaceStats] = useState([]);
   const [isTrafficLoading, setIsTrafficLoading] = useState(true);
 
-  // 🔥 NEW: Marketplace Intelligence Filter & Sort State
   const [intelSearch, setIntelSearch] = useState('');
   const [intelCategoryFilter, setIntelCategoryFilter] = useState('ALL');
-  const [intelSortKey, setIntelSortKey] = useState('views_desc'); // 'views' or 'shoppers'
+  const [intelSortKey, setIntelSortKey] = useState('views_desc'); 
   
   const [reviewingSeller, setReviewingSeller] = useState(null); 
   const [viewingProduct, setViewingProduct] = useState(null); 
@@ -161,8 +160,6 @@ function AdminDashboard({ user }) {
   const uniqueOrderStores = ['ALL', ...new Set(allOrders.map(o => o.StoreName).filter(Boolean))];
   const filteredOrders = allOrders.filter(o => orderStoreFilter === 'ALL' || o.StoreName === orderStoreFilter);
 
-  // 🔥 NEW: Filter and Sort Logic for Marketplace Intelligence (90 Days)
-  // 🔥 UPDATED: Added 'purchases' to the sort and filter logic
   const filteredIntel = marketplaceStats
     .filter(item => 
         (item.productName?.toLowerCase().includes(intelSearch.toLowerCase()) || 
@@ -172,9 +169,9 @@ function AdminDashboard({ user }) {
     .sort((a, b) => {
         const [key, direction] = intelSortKey.split('_');
         if (direction === 'asc') {
-            return a[key] - b[key]; // Lowest to Highest
+            return a[key] - b[key]; 
         } else {
-            return b[key] - a[key]; // Highest to Lowest
+            return b[key] - a[key]; 
         }
     });
 
@@ -194,6 +191,10 @@ function AdminDashboard({ user }) {
 
       <div style={{ display: 'flex', borderBottom: '2px solid #ddd', marginBottom: '25px', gap: '30px', overflowX: 'auto' }}>
         <TabButton label="📊 Action Overview" isActive={activeTab === 'overview'} onClick={() => setActiveTab('overview')} alertCount={pendingSellers.length} />
+        
+        {/* 🔥 NEW TAB BUTTON */}
+        <TabButton label="📡 Live Traffic" isActive={activeTab === 'live'} onClick={() => setActiveTab('live')} />
+        
         <TabButton label="📈 Marketplace Intelligence" isActive={activeTab === 'intelligence'} onClick={() => setActiveTab('intelligence')} />
         <TabButton label="📦 Product Moderation" isActive={activeTab === 'products'} onClick={() => setActiveTab('products')} alertCount={allProducts.filter(p => (p.fixSubmitted || p.FixSubmitted) && p.IsArchived).length} />
         <TabButton label="🚛 All Shipments" isActive={activeTab === 'orders'} onClick={() => setActiveTab('orders')} alertCount={allOrders.filter(o => o.Status === 'Placed' && o.HoursSincePlaced > 48).length} />
@@ -207,11 +208,15 @@ function AdminDashboard({ user }) {
             pendingSellers={pendingSellers} 
             setReviewingSeller={setReviewingSeller} 
             topShops={trafficData.topShops}
-            shoppers={trafficData.shoppers} 
+            // 🔥 Removed shoppers from here
         />
       )}
 
-      {/* 🔥 UPDATED Intelligence Tab with Filter/Sort Props */}
+      {/* 🔥 NEW TAB COMPONENT */}
+      {activeTab === 'live' && (
+          <LiveTrafficTab shoppers={trafficData.shoppers} />
+      )}
+
       {activeTab === 'intelligence' && (
         <IntelligenceTab 
             stats={filteredIntel} 

@@ -7,10 +7,15 @@ const SellerOrdersModal = ({ isOpen, onClose, sellerId }) => {
     const [orders, setOrders] = useState([]);
     const [loading, setLoading] = useState(false);
     const [viewingItem, setViewingItem] = useState(null);
-    
     const [catalog, setCatalog] = useState([]);
 
-    // 🔥 ADDED: Viewport detection for mobile responsiveness
+    const [statusFilter, setStatusFilter] = useState('ALL');
+    const [sortBy, setSortBy] = useState('date_desc');
+    const [searchQuery, setSearchQuery] = useState('');
+
+    // 🔥 NEW: State to track which orders are currently expanded
+    const [expandedOrders, setExpandedOrders] = useState({});
+
     const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
 
     useEffect(() => {
@@ -40,6 +45,14 @@ const SellerOrdersModal = ({ isOpen, onClose, sellerId }) => {
                  .catch(err => console.error("Failed to load catalog"));
         }
     }, [isOpen, sellerId, fetchOrders]);
+
+    // 🔥 NEW: Toggle function for the accordion
+    const toggleOrderExpand = (orderId) => {
+        setExpandedOrders(prev => ({
+            ...prev,
+            [orderId]: !prev[orderId]
+        }));
+    };
 
     const handleCancelItem = async (orderId, product, e) => {
         e.stopPropagation(); 
@@ -79,23 +92,75 @@ const SellerOrdersModal = ({ isOpen, onClose, sellerId }) => {
         return catalog.find(p => String(p.id) === targetId) || {};
     };
 
+    const processedOrders = orders
+        .filter(o => {
+            if (statusFilter !== 'ALL') {
+                if (statusFilter === 'Cancelled' && !o.Status?.includes('Cancelled')) return false;
+                if (statusFilter !== 'Cancelled' && o.Status !== statusFilter) return false;
+            }
+            if (searchQuery) {
+                const q = searchQuery.toLowerCase();
+                const matchId = String(o.OrderId).includes(q);
+                const matchName = (o.BuyerName || '').toLowerCase().includes(q);
+                if (!matchId && !matchName) return false;
+            }
+            return true;
+        })
+        .sort((a, b) => {
+            const dateA = new Date(a.OrderDate?.endsWith('Z') ? a.OrderDate : `${a.OrderDate}Z`);
+            const dateB = new Date(b.OrderDate?.endsWith('Z') ? b.OrderDate : `${b.OrderDate}Z`);
+            
+            if (sortBy === 'date_desc') return dateB - dateA; 
+            if (sortBy === 'date_asc') return dateA - dateB;  
+            if (sortBy === 'amount_desc') return b.TotalAmount - a.TotalAmount; 
+            if (sortBy === 'amount_asc') return a.TotalAmount - b.TotalAmount;  
+            return 0;
+        });
+
     return (
         <>
-            {/* 🔥 Modal width set to 100% via the newly optimized Modal.js */}
             <Modal isOpen={isOpen} onClose={onClose} title="Order Management">
-                <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '10px 0', borderBottom: '1px solid #eee', marginBottom: '15px', width: '100%', boxSizing: 'border-box' }}>
-                    <button onClick={fetchOrders} style={{ background: '#f8f9fa', color: '#333', border: '1px solid #ccc', padding: '8px 15px', borderRadius: '6px', cursor:'pointer', fontWeight: 'bold', width: isMobile ? '100%' : 'auto' }}>
-                        🔄 Refresh List
-                    </button>
+                
+                <div style={{ background: '#f8f9fa', padding: '15px', borderRadius: '8px', marginBottom: '20px', border: '1px solid #e9ecef', display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: '15px', justifyContent: 'space-between', alignItems: isMobile ? 'stretch' : 'center', width: '100%', boxSizing: 'border-box' }}>
+                    <input 
+                        type="text" 
+                        placeholder="Search Order ID or Buyer Name..." 
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        style={{ padding: '10px 15px', borderRadius: '6px', border: '1px solid #ccc', outline: 'none', flex: 1 }}
+                    />
+                    
+                    <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} style={{ padding: '10px', borderRadius: '6px', border: '1px solid #ccc', flex: isMobile ? 1 : 'none' }}>
+                            <option value="ALL">All Statuses</option>
+                            <option value="Placed">New (Placed)</option>
+                            <option value="Confirmed">Confirmed</option>
+                            <option value="Shipped">Shipped</option>
+                            <option value="Delivered">Delivered</option>
+                            <option value="Cancelled">Cancelled</option>
+                        </select>
+
+                        <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} style={{ padding: '10px', borderRadius: '6px', border: '1px solid #ccc', flex: isMobile ? 1 : 'none' }}>
+                            <option value="date_desc">Newest First</option>
+                            <option value="date_asc">Oldest First</option>
+                            <option value="amount_desc">Highest Value</option>
+                            <option value="amount_asc">Lowest Value</option>
+                        </select>
+
+                        <button onClick={fetchOrders} style={{ background: '#e2e3e5', color: '#333', border: 'none', padding: '10px 15px', borderRadius: '6px', cursor:'pointer', fontWeight: 'bold', flex: isMobile ? '100%' : 'none' }} title="Refresh List">🔄</button>
+                    </div>
                 </div>
                 
-                <div style={{ maxHeight: isMobile ? 'auto' : '75vh', overflowY: isMobile ? 'visible' : 'auto', paddingRight: isMobile ? '0' : '10px', width: '100%', boxSizing: 'border-box' }}>
+                <div style={{ maxHeight: isMobile ? 'auto' : '70vh', overflowY: isMobile ? 'visible' : 'auto', paddingRight: isMobile ? '0' : '10px', width: '100%', boxSizing: 'border-box' }}>
                     {loading ? (
                         <div style={{ textAlign: 'center', padding: '40px', color: '#666' }}>⏳ Loading orders...</div>
-                    ) : orders.length === 0 ? (
-                        <div style={{ textAlign: 'center', padding: '40px', color: '#666' }}>No orders found yet.</div>
-                    ) : orders.map(o => {
+                    ) : processedOrders.length === 0 ? (
+                        <div style={{ textAlign: 'center', padding: '40px', color: '#666', background: '#f9f9f9', borderRadius: '8px' }}>
+                            {orders.length > 0 ? "No orders match your filter criteria." : "No orders found yet."}
+                        </div>
+                    ) : processedOrders.map(o => {
                         const products = o.ItemsJson ? JSON.parse(o.ItemsJson) : [];
+                        const isExpanded = !!expandedOrders[o.OrderId];
                         
                         let rawAddress = o.ShippingAddress || "No address provided";
                         let paymentMethod = "COD"; 
@@ -108,35 +173,41 @@ const SellerOrdersModal = ({ isOpen, onClose, sellerId }) => {
                         const isTerminal = o.Status === 'Delivered' || o.Status?.includes('Cancelled');
 
                         return (
-                            <div key={o.OrderId} style={{ border: '1px solid #e0e0e0', borderRadius: '12px', padding: isMobile ? '15px' : '20px', marginBottom: '20px', background: o.Status?.includes('Cancelled') ? '#fffcfc' : '#fff', boxShadow: '0 4px 10px rgba(0,0,0,0.03)', width: '100%', boxSizing: 'border-box' }}>
+                            <div key={o.OrderId} style={{ border: '1px solid #e0e0e0', borderRadius: '12px', marginBottom: '15px', background: o.Status?.includes('Cancelled') ? '#fffcfc' : '#fff', boxShadow: '0 4px 10px rgba(0,0,0,0.03)', width: '100%', boxSizing: 'border-box', overflow: 'hidden' }}>
                                 
-                                {/* HEADER */}
-                                <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', justifyContent: 'space-between', alignItems: isMobile ? 'flex-start' : 'flex-start', marginBottom: '15px', borderBottom: '1px solid #eee', paddingBottom: '15px', gap: isMobile ? '15px' : '0' }}>
-                                    <div style={{ width: '100%' }}>
-                                        <h4 style={{ margin: '0 0 5px 0', fontSize: '18px' }}>Order <span style={{ color: '#007bff' }}>#{o.OrderId}</span></h4>
-                                        <div style={{ fontSize: '13px', color: '#888' }}>
-                                            {o.OrderDate ? new Date(o.OrderDate.replace('Z', '')).toLocaleString('en-IN', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }) : 'Date not available'}
+                                {/* 🔥 ACCORDION HEADER (Always Visible) */}
+                                <div 
+                                    onClick={() => toggleOrderExpand(o.OrderId)}
+                                    style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', justifyContent: 'space-between', alignItems: isMobile ? 'flex-start' : 'center', padding: isMobile ? '15px' : '20px', cursor: 'pointer', transition: 'background 0.2s', gap: isMobile ? '15px' : '0' }}
+                                    onMouseOver={(e) => e.currentTarget.style.background = '#f8f9fa'}
+                                    onMouseOut={(e) => e.currentTarget.style.background = 'transparent'}
+                                >
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '15px', width: '100%' }}>
+                                        {/* Chevron Icon */}
+                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '32px', height: '32px', borderRadius: '50%', background: isExpanded ? '#e7f1ff' : '#f8f9fa', color: isExpanded ? '#0d6efd' : '#6c757d', transition: 'all 0.3s', transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)' }}>
+                                            ▼
+                                        </div>
+                                        <div>
+                                            <h4 style={{ margin: '0 0 5px 0', fontSize: '18px' }}>Order <span style={{ color: '#007bff' }}>#{o.OrderId}</span></h4>
+                                            <div style={{ fontSize: '13px', color: '#666', display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
+                                                <span>{o.OrderDate ? new Date(o.OrderDate.endsWith('Z') ? o.OrderDate : `${o.OrderDate.replace(' ', 'T')}Z`).toLocaleString('en-IN', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }) : 'Date not available'}</span>
+                                                <span style={{ color: '#ccc' }}>|</span>
+                                                <strong style={{ color: '#28a745', fontSize: '14px' }}>Rs. {o.TotalAmount}</strong>
+                                            </div>
                                         </div>
                                     </div>
-                                    <div style={{ width: isMobile ? '100%' : 'auto' }}>
+                                    
+                                    {/* Stop Propagation here so changing status doesn't collapse the accordion */}
+                                    <div style={{ width: isMobile ? '100%' : 'auto' }} onClick={(e) => e.stopPropagation()}>
                                         {isTerminal ? (
-                                            <span style={{ 
-                                                display: 'inline-block', padding: '6px 12px', borderRadius: '6px', fontWeight: 'bold', fontSize: '14px', textAlign: 'center', width: isMobile ? '100%' : 'auto', boxSizing: 'border-box',
-                                                background: o.Status === 'Delivered' ? '#d4edda' : '#f8d7da',
-                                                color: o.Status === 'Delivered' ? '#155724' : '#721c24',
-                                                border: `1px solid ${o.Status === 'Delivered' ? '#c3e6cb' : '#f5c6cb'}`
-                                            }}>
+                                            <span style={{ display: 'inline-block', padding: '6px 12px', borderRadius: '6px', fontWeight: 'bold', fontSize: '14px', textAlign: 'center', width: isMobile ? '100%' : 'auto', boxSizing: 'border-box', background: o.Status === 'Delivered' ? '#d4edda' : '#f8d7da', color: o.Status === 'Delivered' ? '#155724' : '#721c24', border: `1px solid ${o.Status === 'Delivered' ? '#c3e6cb' : '#f5c6cb'}` }}>
                                                 {o.Status.toUpperCase()}
                                             </span>
                                         ) : (
                                             <select
                                                 value={o.Status}
                                                 onChange={(e) => updateStatus(o.OrderId, e.target.value)}
-                                                style={{
-                                                    padding: '10px 12px', borderRadius: '6px', border: '1px solid #ccc', fontWeight: 'bold', cursor: 'pointer', outline: 'none', width: isMobile ? '100%' : 'auto', boxSizing: 'border-box',
-                                                    backgroundColor: o.Status === 'Confirmed' ? '#e7f1ff' : o.Status === 'Shipped' ? '#fff3cd' : '#f8f9fa',
-                                                    color: o.Status === 'Confirmed' ? '#0c63e4' : o.Status === 'Shipped' ? '#856404' : '#333'
-                                                }}
+                                                style={{ padding: '10px 12px', borderRadius: '6px', border: '1px solid #ccc', fontWeight: 'bold', cursor: 'pointer', outline: 'none', width: isMobile ? '100%' : 'auto', boxSizing: 'border-box', backgroundColor: o.Status === 'Confirmed' ? '#e7f1ff' : o.Status === 'Shipped' ? '#fff3cd' : '#f8f9fa', color: o.Status === 'Confirmed' ? '#0c63e4' : o.Status === 'Shipped' ? '#856404' : '#333' }}
                                             >
                                                 <option value="Placed">Placed (New)</option>
                                                 <option value="Confirmed">Confirmed</option>
@@ -147,86 +218,72 @@ const SellerOrdersModal = ({ isOpen, onClose, sellerId }) => {
                                     </div>
                                 </div>
 
-                                {/* CUSTOMER DETAILS */}
-                                <div style={{ background: '#f8f9fa', padding: '15px', borderRadius: '8px', marginBottom: '20px', border: '1px solid #e9ecef', fontSize: '14px', color: '#333', width: '100%', boxSizing: 'border-box' }}>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', borderBottom: '1px solid #dee2e6', paddingBottom: '10px' }}>
-                                        <span style={{ fontWeight: 'bold', color: '#495057', fontSize: isMobile ? '13px' : '14px' }}>👤 Customer Info & Shipping</span>
-                                        <span style={{ background: '#e2e3e5', color: '#383d41', padding: '4px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 'bold' }}>
-                                            {paymentMethod}
-                                        </span>
-                                    </div>
-                                    
-                                    {/* 🔥 FIX: Changed grid layout to stack vertically on mobile */}
-                                    <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: '15px', width: '100%' }}>
-                                        <div style={{ flex: 1, paddingBottom: isMobile ? '10px' : '0', borderBottom: isMobile ? '1px dashed #ddd' : 'none' }}>
-                                            <div style={{ marginBottom: '8px' }}><span style={{ color: '#6c757d', fontSize: '11px', display: 'block', textTransform: 'uppercase' }}>Buyer Name</span> <strong style={{ wordBreak: 'break-word' }}>{o.BuyerName || "Unknown"}</strong></div>
-                                            <div><span style={{ color: '#6c757d', fontSize: '11px', display: 'block', textTransform: 'uppercase' }}>Email Contact</span> <a href={`mailto:${o.BuyerEmail}`} style={{ color: '#007bff', textDecoration: 'none', fontWeight: 'bold', wordBreak: 'break-all' }}>{o.BuyerEmail || "N/A"}</a></div>
-                                        </div>
-                                        <div style={{ flex: 1.5, position: 'relative' }}>
-                                            <span style={{ color: '#6c757d', fontSize: '11px', display: 'block', textTransform: 'uppercase', marginBottom: '4px' }}>Delivery Address</span>
-                                            <div style={{ whiteSpace: 'pre-wrap', background: 'white', padding: '12px', borderRadius: '6px', border: '1px solid #ced4da', lineHeight: '1.5', fontSize: '13px', wordBreak: 'break-word' }}>
-                                                {rawAddress}
-                                            </div>
-                                            <button onClick={() => copyToClipboard(rawAddress)} style={{ position: 'absolute', top: '18px', right: '5px', background: 'none', border: 'none', cursor: 'pointer', fontSize: '16px', padding: '5px' }} title="Copy Address">
-                                                📋
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {/* ITEMS LIST */}
-                                <div style={{ marginBottom: '15px', width: '100%', boxSizing: 'border-box' }}>
-                                    <h5 style={{ margin: '0 0 10px 0', color: '#555', borderBottom: '1px solid #eee', paddingBottom: '5px' }}>Ordered Items</h5>
-                                    {products.map((p, idx) => (
-                                        <div 
-                                            key={idx} 
-                                            onClick={() => setViewingItem(p)}
-                                            title="Click to view full product details"
-                                            style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', alignItems: isMobile ? 'flex-start' : 'center', gap: '15px', marginBottom: '10px', opacity: p.ItemStatus?.includes('Cancelled') ? 0.5 : 1, cursor: 'pointer', padding: '12px', borderRadius: '8px', border: '1px solid #f0f0f0', transition: 'background 0.2s', width: '100%', boxSizing: 'border-box' }}
-                                            onMouseOver={(e) => e.currentTarget.style.background = '#f8f9fa'}
-                                            onMouseOut={(e) => e.currentTarget.style.background = 'transparent'}
-                                        >
-                                            <div style={{ display: 'flex', gap: '15px', width: '100%', alignItems: 'center' }}>
-                                                <div style={{ width: '60px', height: '60px', background: 'white', border: '1px solid #ddd', borderRadius: '6px', overflow: 'hidden', flexShrink: 0 }}>
-                                                    <img src={parseImages(p.ImageUrl)[0]} alt={p.Name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                                                </div>
-                                                <div style={{ flex: 1, overflow: 'hidden' }}>
-                                                    <div style={{ fontWeight: 'bold', fontSize: '14px', color: '#007bff', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-                                                        {p.Name} ↗
-                                                    </div>
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px', flexWrap: 'wrap' }}>
-                                                        <div style={{ fontSize: '12px', color: '#666' }}>Qty: {p.Qty} × Rs.{p.Price}</div>
-                                                        {p.ItemStatus?.includes('Cancelled') && <span style={{ color: '#dc3545', fontSize: '10px', border: '1px solid #dc3545', padding: '2px 4px', borderRadius: '4px', fontWeight: 'bold' }}>{p.ItemStatus.toUpperCase()}</span>}
-                                                    </div>
-                                                </div>
+                                {/* 🔥 EXPANDABLE BODY */}
+                                {isExpanded && (
+                                    <div style={{ padding: isMobile ? '0 15px 15px 15px' : '0 20px 20px 20px', borderTop: '1px solid #eee', marginTop: '5px', paddingTop: '15px', animation: 'fadeIn 0.3s ease' }}>
+                                        
+                                        {/* CUSTOMER DETAILS */}
+                                        <div style={{ background: '#f8f9fa', padding: '15px', borderRadius: '8px', marginBottom: '20px', border: '1px solid #e9ecef', fontSize: '14px', color: '#333', width: '100%', boxSizing: 'border-box' }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', borderBottom: '1px solid #dee2e6', paddingBottom: '10px' }}>
+                                                <span style={{ fontWeight: 'bold', color: '#495057', fontSize: isMobile ? '13px' : '14px' }}>👤 Customer Info & Shipping</span>
+                                                <span style={{ background: '#e2e3e5', color: '#383d41', padding: '4px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 'bold' }}>{paymentMethod}</span>
                                             </div>
                                             
-                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: isMobile ? '100%' : 'auto', marginTop: isMobile ? '10px' : '0', borderTop: isMobile ? '1px dashed #eee' : 'none', paddingTop: isMobile ? '10px' : '0' }}>
-                                                <div style={{ fontWeight: 'bold', fontSize: '16px', color: '#333' }}>Rs. {p.Qty * p.Price}</div>
-                                                
-                                                {!p.ItemStatus?.includes('Cancelled') && (o.Status === 'Placed' || o.Status === 'Confirmed') && (
-                                                    <button 
-                                                        onClick={(e) => handleCancelItem(o.OrderId, p, e)}
-                                                        style={{ color: '#dc3545', border: '1px solid #dc3545', background: 'white', cursor: 'pointer', padding: '6px 10px', fontSize: '11px', borderRadius: '4px', fontWeight: 'bold', transition: 'all 0.2s', marginLeft: '15px' }}
-                                                    >
-                                                        ✕ Cancel Item
-                                                    </button>
-                                                )}
+                                            <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: '15px', width: '100%' }}>
+                                                <div style={{ flex: 1, paddingBottom: isMobile ? '10px' : '0', borderBottom: isMobile ? '1px dashed #ddd' : 'none' }}>
+                                                    <div style={{ marginBottom: '8px' }}><span style={{ color: '#6c757d', fontSize: '11px', display: 'block', textTransform: 'uppercase' }}>Buyer Name</span> <strong style={{ wordBreak: 'break-word' }}>{o.BuyerName || "Unknown"}</strong></div>
+                                                    <div><span style={{ color: '#6c757d', fontSize: '11px', display: 'block', textTransform: 'uppercase' }}>Email Contact</span> <a href={`mailto:${o.BuyerEmail}`} style={{ color: '#007bff', textDecoration: 'none', fontWeight: 'bold', wordBreak: 'break-all' }}>{o.BuyerEmail || "N/A"}</a></div>
+                                                </div>
+                                                <div style={{ flex: 1.5, position: 'relative' }}>
+                                                    <span style={{ color: '#6c757d', fontSize: '11px', display: 'block', textTransform: 'uppercase', marginBottom: '4px' }}>Delivery Address</span>
+                                                    <div style={{ whiteSpace: 'pre-wrap', background: 'white', padding: '12px', borderRadius: '6px', border: '1px solid #ced4da', lineHeight: '1.5', fontSize: '13px', wordBreak: 'break-word' }}>{rawAddress}</div>
+                                                    <button onClick={() => copyToClipboard(rawAddress)} style={{ position: 'absolute', top: '18px', right: '5px', background: 'none', border: 'none', cursor: 'pointer', fontSize: '16px', padding: '5px' }} title="Copy Address">📋</button>
+                                                </div>
                                             </div>
                                         </div>
-                                    ))}
-                                </div>
 
-                                <div style={{ display: 'flex', flexDirection: isMobile ? 'column-reverse' : 'row', justifyContent: 'space-between', alignItems: isMobile ? 'flex-end' : 'center', marginTop: '15px', borderTop: '2px dashed #eee', paddingTop: '15px', gap: isMobile ? '10px' : '0', width: '100%', boxSizing: 'border-box' }}>
-                                    <div style={{ fontSize: '12px', color: '#888', width: '100%', textAlign: isMobile ? 'right' : 'left' }}>
-                                        {o.Status === 'Cancelled by Admin' ? "⚠️ Forcefully cancelled by Admin." : 
-                                         o.Status === 'Cancelled' ? "Entire order was cancelled." : "Update status to notify the buyer."}
+                                        {/* ITEMS LIST */}
+                                        <div style={{ width: '100%', boxSizing: 'border-box' }}>
+                                            <h5 style={{ margin: '0 0 10px 0', color: '#555', borderBottom: '1px solid #eee', paddingBottom: '5px' }}>Ordered Items</h5>
+                                            {products.map((p, idx) => (
+                                                <div 
+                                                    key={idx} 
+                                                    onClick={() => setViewingItem(p)}
+                                                    title="Click to view full product details"
+                                                    style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', alignItems: isMobile ? 'flex-start' : 'center', gap: '15px', marginBottom: '10px', opacity: p.ItemStatus?.includes('Cancelled') ? 0.5 : 1, cursor: 'pointer', padding: '12px', borderRadius: '8px', border: '1px solid #f0f0f0', transition: 'background 0.2s', width: '100%', boxSizing: 'border-box' }}
+                                                    onMouseOver={(e) => e.currentTarget.style.background = '#f8f9fa'}
+                                                    onMouseOut={(e) => e.currentTarget.style.background = 'transparent'}
+                                                >
+                                                    <div style={{ display: 'flex', gap: '15px', width: '100%', alignItems: 'center' }}>
+                                                        <div style={{ width: '60px', height: '60px', background: 'white', border: '1px solid #ddd', borderRadius: '6px', overflow: 'hidden', flexShrink: 0 }}>
+                                                            <img src={parseImages(p.ImageUrl)[0]} alt={p.Name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                                        </div>
+                                                        <div style={{ flex: 1, overflow: 'hidden' }}>
+                                                            <div style={{ fontWeight: 'bold', fontSize: '14px', color: '#007bff', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{p.Name} ↗</div>
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px', flexWrap: 'wrap' }}>
+                                                                <div style={{ fontSize: '12px', color: '#666' }}>Qty: {p.Qty} × Rs.{p.Price}</div>
+                                                                {p.ItemStatus?.includes('Cancelled') && <span style={{ color: '#dc3545', fontSize: '10px', border: '1px solid #dc3545', padding: '2px 4px', borderRadius: '4px', fontWeight: 'bold' }}>{p.ItemStatus.toUpperCase()}</span>}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    
+                                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: isMobile ? '100%' : 'auto', marginTop: isMobile ? '10px' : '0', borderTop: isMobile ? '1px dashed #eee' : 'none', paddingTop: isMobile ? '10px' : '0' }}>
+                                                        <div style={{ fontWeight: 'bold', fontSize: '16px', color: '#333' }}>Rs. {p.Qty * p.Price}</div>
+                                                        
+                                                        {!p.ItemStatus?.includes('Cancelled') && (o.Status === 'Placed' || o.Status === 'Confirmed') && (
+                                                            <button 
+                                                                onClick={(e) => handleCancelItem(o.OrderId, p, e)}
+                                                                style={{ color: '#dc3545', border: '1px solid #dc3545', background: 'white', cursor: 'pointer', padding: '6px 10px', fontSize: '11px', borderRadius: '4px', fontWeight: 'bold', transition: 'all 0.2s', marginLeft: '15px' }}
+                                                            >
+                                                                ✕ Cancel Item
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
                                     </div>
-                                    <div style={{ fontSize: '18px', display: 'flex', alignItems: 'center', gap: '8px', whiteSpace: 'nowrap' }}>
-                                        <span style={{ color: '#666', fontSize: '14px' }}>Total:</span>
-                                        <strong style={{ color: '#28a745' }}>Rs. {o.TotalAmount}</strong>
-                                    </div>
-                                </div>
+                                )}
                             </div>
                         );
                     })}

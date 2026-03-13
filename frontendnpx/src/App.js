@@ -40,6 +40,12 @@ function App() {
 
   const [checkoutSession, setCheckoutSession] = useState({ items: [], isBuyNow: false });
 
+  // --- NEW: POLICY MODAL STATES ---
+  const [showTermsModal, setShowTermsModal] = useState(false);
+  const [activePolicyTitle, setActivePolicyTitle] = useState('');
+  const [policyContent, setPolicyContent] = useState(''); 
+  const [policyLang, setPolicyLang] = useState('en'); 
+
   // 🔥 VIEWPORT DETECTION
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
 
@@ -48,6 +54,23 @@ function App() {
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
+
+  // --- NEW: FETCH POLICY LOGIC ---
+  const openPolicyDocument = async (fileName, title) => {
+      setActivePolicyTitle(title);
+      setShowTermsModal(true);
+      setPolicyLang('en'); 
+      setPolicyContent('<p style="text-align:center; padding: 20px; color:#666;">Loading document...</p>');
+
+      try {
+          const response = await fetch(`/policies/${fileName}.html`);
+          if (!response.ok) throw new Error("Document not found");
+          const text = await response.text();
+          setPolicyContent(text);
+      } catch (error) {
+          setPolicyContent('<p style="color:red; padding: 20px;">Failed to load the policy document. Please ensure the lowercase "policies" folder exists in public/.</p>');
+      }
+  };
 
   // ==========================================
   // 🔥 SMART BATCHING TRAFFIC LOGGING
@@ -58,14 +81,13 @@ function App() {
       if (trafficQueue.current.length === 0) return;
       
       const payload = [...trafficQueue.current]; 
-      trafficQueue.current = []; // Empty the queue immediately
+      trafficQueue.current = []; 
 
-      // Send to backend via fetch with keepalive
       fetch('http://localhost:7071/api/LogTrafficBatch', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
-          keepalive: true // Ensures it sends even if the tab is closing
+          keepalive: true 
       }).catch(e => console.warn("Traffic batch log failed silently"));
   }, []);
 
@@ -81,19 +103,16 @@ function App() {
       timestamp: new Date().toISOString()
     });
 
-    // Flush automatically if we hit 50 clicks/views
     if (trafficQueue.current.length >= 50) {
         flushLogs();
     }
   }, [user, isMobile, flushLogs]);
 
-  // Catch tab closes and page refreshes to save remaining logs
   useEffect(() => {
       const handleUnload = () => flushLogs();
       window.addEventListener('beforeunload', handleUnload);
       return () => window.removeEventListener('beforeunload', handleUnload);
   }, [flushLogs]);
-  // ==========================================
 
   // --- GLOBAL SEARCH EFFECT ---
   useEffect(() => {
@@ -227,7 +246,7 @@ function App() {
       if (feature === 'orders') {
           setIsBuyerOrdersOpen(true);
       } else if (feature === 'logout') {
-          flushLogs(); // 🔥 NEW: Send remaining logs before logging out
+          flushLogs(); 
           setUser(null); setSelectedSeller(null); setCartItems([]);
       } else {
           setActiveAccountTab(feature);
@@ -240,6 +259,14 @@ function App() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', background: '#f1f3f6', width: '100%', overflowX: 'hidden' }}>
       
+      {/* --- CSS FOR POLICY LANGUAGES --- */}
+      <style>{`
+        .policy-wrapper .lang-en, .policy-wrapper .lang-hi, .policy-wrapper .lang-mr { display: none; }
+        .policy-wrapper.show-en .lang-en { display: block; }
+        .policy-wrapper.show-hi .lang-hi { display: block; }
+        .policy-wrapper.show-mr .lang-mr { display: block; }
+      `}</style>
+
       <Header 
         user={user}
         selectedSeller={selectedSeller}
@@ -311,44 +338,58 @@ function App() {
                     !selectedSeller ? (
                         <BuyerShopList onEnterShop={(shop) => setSelectedSeller(shop)} refreshKey={refreshKey} />
                     ) : (
-                                      <BuyerShopView
-                                          user={user}
-                                          selectedSeller={selectedSeller}
-                                          onBack={() => { setSelectedSeller(null); setTargetProductId(null); }}
-                                          addToCart={addToCart}
-                                          refreshKey={refreshKey}
-                                          targetProductId={targetProductId}
-
-                                          // 🔥 ADD THIS NEW PROP:
-                                          setTargetProductId={setTargetProductId}
-
-                                          cartItems={cartItems}
-                                          onUpdateQty={handleUpdateQty}
-                                          logTraffic={logTraffic}
-                                      />
+                        <BuyerShopView
+                            user={user}
+                            selectedSeller={selectedSeller}
+                            onBack={() => { setSelectedSeller(null); setTargetProductId(null); }}
+                            addToCart={addToCart}
+                            refreshKey={refreshKey}
+                            targetProductId={targetProductId}
+                            setTargetProductId={setTargetProductId}
+                            cartItems={cartItems}
+                            onUpdateQty={handleUpdateQty}
+                            logTraffic={logTraffic}
+                        />
                     )
                 )}
               </>
           )}    
       </div>
 
-      <Footer />
+      {/* 🔥 FIXED: Passing the policy function to Footer */}
+      <Footer user={user} onOpenPolicy={openPolicyDocument} />
 
-      {/* MODALS */}
-      <CartSidebar 
-        isOpen={isCartOpen} 
-        onClose={() => setIsCartOpen(false)} 
-        cartItems={cartItems} 
-        onRemove={removeFromCart} 
-        onCheckout={() => { setCheckoutSession({ items: cartItems, isBuyNow: false }); handleVerifyAndCheckout(cartItems); }} 
-        isVerifyingStock={isVerifyingStock} 
-        onUpdateQty={handleUpdateQty} 
-        onProductClick={(sellerId, storeName, productId) => {
-            setIsCartOpen(false);
-            setTargetProductId(productId);
-            setSelectedSeller({ id: sellerId, StoreName: storeName });
-        }}
-      />
+      {/* --- GLOBAL POLICY MODAL (Appears on any page) --- */}
+      {showTermsModal && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 3000, padding: '15px' }}>
+          <div style={{ backgroundColor: 'white', padding: isMobile ? '20px' : '30px', borderRadius: '12px', width: '95%', maxWidth: '600px', maxHeight: '90vh', display: 'flex', flexDirection: 'column', position: 'relative', boxShadow: '0 10px 30px rgba(0,0,0,0.3)' }}>
+            
+            <button onClick={() => setShowTermsModal(false)} style={{ position: 'absolute', top: '10px', right: '15px', border: 'none', background: 'none', fontSize: '28px', cursor: 'pointer', color: '#666' }}>&times;</button>
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', borderBottom: '1px solid #eee', paddingBottom: '15px', marginBottom: '15px' }}>
+                <h2 style={{ margin: 0, color: '#333', fontSize: '20px' }}>{activePolicyTitle}</h2>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                    <button onClick={() => setPolicyLang('en')} style={{ padding: '6px 12px', cursor: 'pointer', border: '1px solid #2874f0', background: policyLang === 'en' ? '#2874f0' : 'white', color: policyLang === 'en' ? 'white' : '#2874f0', borderRadius: '4px', fontSize: '12px', fontWeight: 'bold' }}>English</button>
+                    <button onClick={() => setPolicyLang('hi')} style={{ padding: '6px 12px', cursor: 'pointer', border: '1px solid #2874f0', background: policyLang === 'hi' ? '#2874f0' : 'white', color: policyLang === 'hi' ? 'white' : '#2874f0', borderRadius: '4px', fontSize: '12px', fontWeight: 'bold' }}>हिंदी</button>
+                    <button onClick={() => setPolicyLang('mr')} style={{ padding: '6px 12px', cursor: 'pointer', border: '1px solid #2874f0', background: policyLang === 'mr' ? '#2874f0' : 'white', color: policyLang === 'mr' ? 'white' : '#2874f0', borderRadius: '4px', fontSize: '12px', fontWeight: 'bold' }}>मराठी</button>
+                </div>
+            </div>
+
+            <div 
+                className={`policy-wrapper show-${policyLang}`}
+                style={{ flex: 1, fontSize: '14px', lineHeight: '1.6', color: '#444', overflowY: 'auto', maxHeight: '55vh', paddingRight: '10px', marginBottom: '15px' }}
+                dangerouslySetInnerHTML={{ __html: policyContent }} 
+            />
+            
+            <button onClick={() => setShowTermsModal(false)} style={{ width: '100%', padding: '14px', background: '#10b981', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '15px' }}>
+                Close
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* OTHER MODALS */}
+      <CartSidebar isOpen={isCartOpen} onClose={() => setIsCartOpen(false)} cartItems={cartItems} onRemove={removeFromCart} onCheckout={() => { setCheckoutSession({ items: cartItems, isBuyNow: false }); handleVerifyAndCheckout(cartItems); }} isVerifyingStock={isVerifyingStock} onUpdateQty={handleUpdateQty} onProductClick={(sellerId, storeName, productId) => { setIsCartOpen(false); setTargetProductId(productId); setSelectedSeller({ id: sellerId, StoreName: storeName }); }} />
       <CheckoutModal isOpen={isCheckoutModalOpen} onClose={() => setIsCheckoutModalOpen(false)} cartItems={checkoutSession.items} cartTotal={checkoutSession.items.reduce((sum, item) => sum + (Number(item.price) * (item.qty || 1)), 0)} onConfirmOrder={handlePlaceOrder} userId={user?.userId} onViewOrders={() => { setIsCheckoutModalOpen(false); setIsBuyerOrdersOpen(true); }} />
       <BuyerOrdersModal isOpen={isBuyerOrdersOpen} onClose={() => setIsBuyerOrdersOpen(false)} userId={user?.userId} />
       <BuyerAccountModal isOpen={isAccountModalOpen} onClose={() => setIsAccountModalOpen(false)} activeTab={activeAccountTab} setActiveTab={setActiveAccountTab} user={user} onUpdateUser={setUser} onVisitShop={(sellerId, storeName, productId) => { setIsAccountModalOpen(false); setTargetProductId(productId); setSelectedSeller({ id: sellerId, StoreName: storeName }); }} />

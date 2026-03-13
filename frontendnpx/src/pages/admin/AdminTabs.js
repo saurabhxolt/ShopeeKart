@@ -1,66 +1,76 @@
 import React from 'react';
 
 // --- HELPER FUNCTIONS ---
-const getRowStyle = (isDeleted) => ({ background: isDeleted ? '#f5f5f5' : 'white', color: isDeleted ? '#999' : '#333', borderBottom: '1px solid #eee', opacity: isDeleted ? 0.8 : 1 });
+const getRowStyle = (isDeleted) => ({ 
+    background: isDeleted ? '#f5f5f5' : 'white', 
+    color: isDeleted ? '#999' : '#333', 
+    borderBottom: '1px solid #eee', 
+    opacity: isDeleted ? 0.8 : 1 
+});
+
 const getPrimaryImage = (imageStr) => {
     if (!imageStr) return null;
-    try { const parsed = JSON.parse(imageStr); return Array.isArray(parsed) && parsed.length > 0 ? parsed[0] : imageStr; } 
-    catch (e) { return imageStr; }
+    try { 
+        const parsed = JSON.parse(imageStr); 
+        return Array.isArray(parsed) && parsed.length > 0 ? parsed[0] : imageStr; 
+    } catch (e) { return imageStr; }
+};
+
+/** * 🔥 FIXED: Handles UTC strings correctly for IST comparison 
+ */
+const isUserLive = (lastSeen) => {
+    if (!lastSeen) return false;
+    
+    // 1. Ensure string is treated as UTC by formatting it correctly (YYYY-MM-DDTHH:MM:SSZ)
+    const dateStr = lastSeen.endsWith('Z') ? lastSeen : `${lastSeen.replace(' ', 'T')}Z`;
+    const lastActive = new Date(dateStr);
+    
+    // 2. Compare against the browser's current local time
+    const diffInMinutes = (new Date() - lastActive) / 60000;
+    
+    return diffInMinutes <= 5; // True if active in last 5 minutes
 };
 
 // --- ANALYTICS CARDS (TOP ROW) ---
-export const AnalyticsCards = ({ pendingSellers, activeSellers, totalActiveUsers, trafficSummary, isTrafficLoading }) => (
+export const AnalyticsCards = ({ pendingSellers, activeSellers, trafficSummary, isTrafficLoading }) => (
   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '20px', marginBottom: '35px' }}>
-    {/* Existing Logic: Pending Approvals */}
     <div style={{ background: 'linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%)', padding: '20px', borderRadius: '12px', boxShadow: '0 4px 10px rgba(0,0,0,0.1)', color: '#fff' }}>
       <h4 style={{ margin: '0 0 10px 0', fontSize: '14px', textTransform: 'uppercase', letterSpacing: '1px', color: '#c0392b' }}>⏳ Pending Approvals</h4>
       <div style={{ fontSize: '36px', fontWeight: 'bold', color: '#c0392b' }}>{pendingSellers.length}</div>
     </div>
 
-    {/* Existing Logic: Active Shops */}
     <div style={{ background: 'linear-gradient(135deg, #a1c4fd 0%, #c2e9fb 100%)', padding: '20px', borderRadius: '12px', boxShadow: '0 4px 10px rgba(0,0,0,0.1)', color: '#0d47a1' }}>
       <h4 style={{ margin: '0 0 10px 0', fontSize: '14px', textTransform: 'uppercase', letterSpacing: '1px' }}>🏪 Active Shops</h4>
       <div style={{ fontSize: '36px', fontWeight: 'bold' }}>{activeSellers.length}</div>
     </div>
 
-    {/* Existing Logic: Active Visits (24h) */}
     <div style={{ background: 'linear-gradient(135deg, #f6d365 0%, #fda085 100%)', padding: '20px', borderRadius: '12px', boxShadow: '0 4px 10px rgba(0,0,0,0.1)', color: '#fff' }}>
-      <h4 style={{ margin: '0 0 10px 0', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '1px', color: '#bf360c' }}>🚀 Active Visits (24h)</h4>
+      <h4 style={{ margin: '0 0 10px 0', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '1px', color: '#bf360c' }}>🚀 Global Hits (24h)</h4>
       <div style={{ fontSize: '36px', fontWeight: 'bold', color: '#bf360c' }}>{isTrafficLoading ? '...' : (trafficSummary?.TotalHits || 0)}</div>
     </div>
 
-    {/* 🔥 UPDATED: Active Buyers (Using UserId logic from Backend) */}
     <div style={{ background: 'linear-gradient(135deg, #84fab0 0%, #8fd3f4 100%)', padding: '20px', borderRadius: '12px', boxShadow: '0 4px 10px rgba(0,0,0,0.1)', color: '#006266' }}>
-      <h4 style={{ margin: '0 0 10px 0', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '1px' }}>👥 Active Buyers (24h)</h4>
+      <h4 style={{ margin: '0 0 10px 0', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '1px' }}>👥 Unique Humans (24h)</h4>
       <div style={{ fontSize: '36px', fontWeight: 'bold' }}>{isTrafficLoading ? '...' : (trafficSummary?.UniqueShoppers || 0)}</div>
-    </div>
-
-    {/* Existing Logic: Mobile vs Desktop Split */}
-    <div style={{ background: 'linear-gradient(135deg, #e0c3fc 0%, #8ec5fc 100%)', padding: '20px', borderRadius: '12px', boxShadow: '0 4px 10px rgba(0,0,0,0.1)', color: '#4a00e0' }}>
-      <h4 style={{ margin: '0 0 10px 0', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '1px' }}>📱 Device Used</h4>
-      <div style={{ display: 'flex', gap: '15px', alignItems: 'baseline' }}>
-          <span style={{ fontSize: '24px', fontWeight: 'bold' }}>{trafficSummary?.MobileUsers || 0}</span> <small>on Mobile</small>
-          <span style={{ fontSize: '24px', fontWeight: 'bold' }}>{trafficSummary?.DesktopUsers || 0}</span> <small>on Desktop</small>
-      </div>
     </div>
   </div>
 );
 
 // --- TAB 1: OVERVIEW ---
-export const OverviewTab = ({ pendingSellers, setReviewingSeller, topShops, shoppers }) => (
+export const OverviewTab = ({ pendingSellers, setReviewingSeller, topShops }) => (
   <div className="tab-content fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '30px' }}>
-    
+
     {/* Awaiting Approvals Section */}
     <div style={{ background: '#e3f2fd', padding: '20px', borderRadius: '10px', boxShadow: '0 2px 5px rgba(0,0,0,0.1)', borderLeft: '5px solid #007bff' }}>
-      <h2 style={{ color: '#0d47a1', marginTop: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>⏳ Awaiting Shop Approvals ({pendingSellers.length})</h2>
+      <h2 style={{ color: '#0d47a1', marginTop: 0 }}>⏳ Awaiting Shop Approvals ({pendingSellers.length})</h2>
       {pendingSellers.length === 0 ? (
         <p style={{ color: '#555', fontStyle: 'italic' }}>All caught up! No pending shops.</p>
       ) : (
         <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', background: 'white', borderCollapse: 'collapse', borderRadius: '8px', overflow: 'hidden' }}>
+            <table style={{ width: '100%', background: 'white', borderCollapse: 'collapse', borderRadius: '8px' }}>
               <thead>
                 <tr style={{ background: '#1976d2', color: 'white', textAlign: 'left' }}>
-                  <th style={{ padding: '12px' }}>Store Name</th><th style={{ padding: '12px' }}>Owner</th><th style={{ padding: '12px' }}>Email</th><th style={{ padding: '12px' }}>Actions</th>
+                  <th style={{ padding: '12px' }}>Store Name</th><th style={{ padding: '12px' }}>Owner</th><th style={{ padding: '12px' }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -68,8 +78,7 @@ export const OverviewTab = ({ pendingSellers, setReviewingSeller, topShops, shop
                   <tr key={s.SellerId} style={{ borderBottom: '1px solid #eee' }}>
                     <td style={{ padding: '12px', fontWeight: 'bold' }}>{s.StoreName || 'Unnamed'}</td>
                     <td style={{ padding: '12px' }}>{s.FullName}</td>
-                    <td style={{ padding: '12px' }}>{s.Email}</td>
-                    <td style={{ padding: '12px' }}><button onClick={() => setReviewingSeller(s)} style={{ background: '#007bff', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '4px', cursor:'pointer', fontWeight: 'bold' }}>🔍 Review Shop</button></td>
+                    <td style={{ padding: '12px' }}><button onClick={() => setReviewingSeller(s)} style={{ background: '#007bff', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '4px', cursor:'pointer' }}>🔍 Review</button></td>
                   </tr>
                 ))}
               </tbody>
@@ -78,35 +87,16 @@ export const OverviewTab = ({ pendingSellers, setReviewingSeller, topShops, shop
       )}
     </div>
 
-      {/* 🔥 NEW SECTION: Active Shopper List */}
-    <div style={{ background: '#fff9db', padding: '20px', borderRadius: '10px', boxShadow: '0 2px 5px rgba(0,0,0,0.1)', borderLeft: '5px solid #fcc419' }}>
-        <h2 style={{ color: '#e67700', marginTop: 0 }}>👥 Active Shoppers (Last 24h)</h2>
-        {shoppers && shoppers.length > 0 ? (
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
-                {shoppers.map((shopper, i) => (
-                    <div key={i} style={{ background: 'white', padding: '10px 15px', borderRadius: '20px', border: '1px solid #ffe066', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <span style={{ fontSize: '18px' }}>👤</span>
-                        <div>
-                            <div style={{ fontWeight: 'bold', fontSize: '13px' }}>{shopper.name}</div>
-                            <div style={{ fontSize: '11px', color: '#666' }}>{shopper.email}</div>
-                        </div>
-                    </div>
-                ))}
-            </div>
-        ) : (
-            <p style={{ color: '#666' }}>No registered users have browsed products in the last 24 hours.</p>
-        )}
-    </div>
-    {/* Trending Shops Leaderboard (Proof of Traffic) */}
+    {/* Trending Shops Leaderboard */}
     <div style={{ background: '#f8f9fa', padding: '20px', borderRadius: '10px', boxShadow: '0 2px 5px rgba(0,0,0,0.1)', borderLeft: '5px solid #28a745' }}>
-        <h2 style={{ color: '#1b5e20', marginTop: 0 }}>📈 Trending Shops (Weekly Traffic)</h2>
+        <h2 style={{ color: '#1b5e20', marginTop: 0 }}>📈 Trending Shops (Weekly)</h2>
         {topShops && topShops.length > 0 ? (
             <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', background: 'white', borderCollapse: 'collapse', borderRadius: '8px', overflow: 'hidden' }}>
+                <table style={{ width: '100%', background: 'white', borderCollapse: 'collapse', borderRadius: '8px' }}>
                     <thead>
                         <tr style={{ background: '#28a745', color: 'white', textAlign: 'left' }}>
                             <th style={{ padding: '12px' }}>Shop Name</th>
-                            <th style={{ padding: '12px' }}>View Count</th>
+                            <th style={{ padding: '12px' }}>Visitors (Unique)</th>
                             <th style={{ padding: '12px' }}>Activity Level</th>
                         </tr>
                     </thead>
@@ -114,10 +104,10 @@ export const OverviewTab = ({ pendingSellers, setReviewingSeller, topShops, shop
                         {topShops.map((shop, i) => (
                             <tr key={i} style={{ borderBottom: '1px solid #eee' }}>
                                 <td style={{ padding: '12px', fontWeight: 'bold' }}>{shop.name}</td>
-                                <td style={{ padding: '12px' }}>{shop.views} visits</td>
+                                <td style={{ padding: '12px' }}>{shop.uniqueVisitors || 0} humans</td>
                                 <td style={{ padding: '12px' }}>
                                     <div style={{ width: '100%', maxWidth: '200px', height: '10px', background: '#e9ecef', borderRadius: '5px', overflow: 'hidden' }}>
-                                        <div style={{ width: `${(shop.views / topShops[0].views) * 100}%`, height: '100%', background: '#28a745' }}></div>
+                                        <div style={{ width: `${(shop.uniqueVisitors / topShops[0].uniqueVisitors) * 100}%`, height: '100%', background: '#28a745' }}></div>
                                     </div>
                                 </td>
                             </tr>
@@ -126,7 +116,7 @@ export const OverviewTab = ({ pendingSellers, setReviewingSeller, topShops, shop
                 </table>
             </div>
         ) : (
-            <p style={{ color: '#666' }}>Capturing traffic data... Check back shortly.</p>
+            <p style={{ color: '#666' }}>Collecting traffic data...</p>
         )}
     </div>
   </div>
@@ -443,3 +433,81 @@ export const IntelligenceTab = ({
         </div>
     </div>
 );
+
+// --- TAB 8: LIVE TRAFFIC & SHOPPERS ---
+export const LiveTrafficTab = ({ shoppers }) => {
+    const [searchTerm, setSearchTerm] = React.useState('');
+
+    // 🔥 FIXED: Robust search logic that safely handles null values and spaces
+    const term = searchTerm.trim().toLowerCase();
+    const filteredShoppers = (shoppers || []).filter(s => {
+        const safeName = s.name ? s.name.toLowerCase() : '';
+        const safeEmail = s.email ? s.email.toLowerCase() : '';
+        return safeName.includes(term) || safeEmail.includes(term);
+    });
+
+    const liveCount = filteredShoppers.filter(s => isUserLive(s.lastSeen)).length;
+
+    return (
+        <div className="tab-content fade-in">
+            <style>{`
+                @keyframes pulse {
+                    0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(40, 167, 69, 0.7); }
+                    70% { transform: scale(1); box-shadow: 0 0 0 6px rgba(40, 167, 69, 0); }
+                    100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(40, 167, 69, 0); }
+                }
+                .live-dot {
+                    width: 10px; height: 10px; background: #28a745; border-radius: 50%;
+                    display: inline-block; animation: pulse 2s infinite;
+                }
+            `}</style>
+
+            <div style={{ background: '#fff9db', padding: '25px', borderRadius: '12px', boxShadow: '0 4px 12px rgba(0,0,0,0.05)', borderLeft: '5px solid #fcc419' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '15px' }}>
+                    <div>
+                        <h2 style={{ color: '#e67700', margin: '0 0 5px 0' }}>📡 Live & Recent Shoppers</h2>
+                        <p style={{ margin: 0, fontSize: '13px', color: '#666' }}>
+                            <span style={{ fontWeight: 'bold', color: '#28a745' }}>{liveCount} Online Now</span> • {filteredShoppers.length} Total in last 24h
+                        </p>
+                    </div>
+                    <input 
+                        type="text" 
+                        placeholder="Search user or email..." 
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        style={{ padding: '10px 15px', borderRadius: '8px', border: '1px solid #ccc', outline: 'none', width: '250px' }}
+                    />
+                </div>
+
+                {filteredShoppers.length > 0 ? (
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: '15px' }}>
+                        {filteredShoppers.map((shopper, i) => {
+                            const active = isUserLive(shopper.lastSeen);
+                            const safeDateStr = shopper.lastSeen.endsWith('Z') ? shopper.lastSeen : `${shopper.lastSeen.replace(' ', 'T')}Z`;
+                            
+                            return (
+                                <div key={i} style={{ background: 'white', padding: '15px', borderRadius: '10px', border: active ? '2px solid #28a745' : '1px solid #ffe066', display: 'flex', alignItems: 'center', gap: '12px', position: 'relative', transition: 'transform 0.2s', cursor: 'default' }} onMouseOver={e => e.currentTarget.style.transform = 'translateY(-2px)'} onMouseOut={e => e.currentTarget.style.transform = 'none'}>
+                                    {active && <span className="live-dot" title="Active Now" style={{ position: 'absolute', top: '-4px', right: '-4px' }}></span>}
+                                    
+                                    <div style={{ fontSize: '30px', background: '#f8f9fa', borderRadius: '50%', width: '50px', height: '50px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>👤</div>
+                                    
+                                    <div style={{ overflow: 'hidden' }}>
+                                        <div style={{ fontWeight: 'bold', fontSize: '14px', color: '#333', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{shopper.name}</div>
+                                        <div style={{ fontSize: '12px', color: '#666', marginBottom: '5px', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{shopper.email}</div>
+                                        <div style={{ fontSize: '11px', color: active ? '#28a745' : '#991b1b', fontWeight: 'bold' }}>
+                                            {active ? '● LIVE NOW' : `Seen: ${new Date(safeDateStr).toLocaleString('en-IN', {hour: '2-digit', minute:'2-digit', hour12: true})}`}
+                                        </div>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                ) : (
+                    <div style={{ textAlign: 'center', padding: '40px', color: '#888', background: 'white', borderRadius: '8px' }}>
+                        {searchTerm ? "No shoppers found matching your search." : "No shopper activity in the last 24 hours."}
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+};

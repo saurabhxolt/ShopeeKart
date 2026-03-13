@@ -18,28 +18,38 @@ app.http('GetAdminAnalytics', {
                 if (err) return resolve({ status: 500, jsonBody: { error: err.message } });
 
                 const query = `
-                    -- 1. Summary Stats (Last 24 Hours)
+                    -- 1. Global Summary Stats (Last 24 Hours)
+                    -- Total Hits
                     SELECT 'TotalHits' as StatType, COUNT(*) as Value FROM TrafficLogs WHERE CreatedAt >= DATEADD(day, -1, GETDATE())
                     UNION ALL
+                    -- Unique Human Shoppers
                     SELECT 'UniqueShoppers', COUNT(DISTINCT UserId) FROM TrafficLogs WHERE CreatedAt >= DATEADD(day, -1, GETDATE())
                     UNION ALL
-                    SELECT 'MobileUsers', COUNT(*) FROM TrafficLogs WHERE DeviceType = 'Mobile' AND CreatedAt >= DATEADD(day, -1, GETDATE())
+                    -- 🔥 FIX: Unique Mobile Humans
+                    SELECT 'MobileUsers', COUNT(DISTINCT CASE WHEN DeviceType = 'Mobile' THEN UserId END) 
+                    FROM TrafficLogs WHERE CreatedAt >= DATEADD(day, -1, GETDATE())
                     UNION ALL
-                    SELECT 'DesktopUsers', COUNT(*) FROM TrafficLogs WHERE DeviceType = 'Desktop' AND CreatedAt >= DATEADD(day, -1, GETDATE());
+                    -- 🔥 FIX: Unique Desktop Humans
+                    SELECT 'DesktopUsers', COUNT(DISTINCT CASE WHEN DeviceType = 'Desktop' THEN UserId END) 
+                    FROM TrafficLogs WHERE CreatedAt >= DATEADD(day, -1, GETDATE());
 
                     -- 2. Top 5 Shops by Traffic (Last 7 Days)
-                    SELECT TOP 5 s.StoreName, COUNT(t.LogId) as ViewCount
+                    -- 🔥 Ranked by Unique Visitors for better business insight
+                    SELECT TOP 5 s.StoreName, COUNT(DISTINCT t.UserId) as UniqueVisitors, COUNT(t.LogId) as RawViews
                     FROM TrafficLogs t
                     JOIN Sellers s ON t.SellerId = s.SellerId
                     WHERE t.CreatedAt >= DATEADD(day, -7, GETDATE())
                     GROUP BY s.StoreName
-                    ORDER BY ViewCount DESC;
+                    ORDER BY UniqueVisitors DESC;
 
-                    -- 3. 🔥 NEW: List of Unique Shoppers (Last 24 Hours)
-                    SELECT DISTINCT u.FullName, u.Email, u.UserId
+                    -- 3. List of Active Shoppers (Last 24 Hours)
+                    -- 🔥 Added MAX(CreatedAt) so Admin can see most recent activity
+                    SELECT u.FullName, u.Email, u.UserId, MAX(t.CreatedAt) as LastActive
                     FROM TrafficLogs t
                     JOIN Users u ON t.UserId = u.UserId
-                    WHERE t.CreatedAt >= DATEADD(day, -1, GETDATE());
+                    WHERE t.CreatedAt >= DATEADD(day, -1, GETDATE())
+                    GROUP BY u.FullName, u.Email, u.UserId
+                    ORDER BY LastActive DESC;
                 `;
 
                 const result = { summary: {}, topShops: [], shoppers: [] };
@@ -54,13 +64,22 @@ app.http('GetAdminAnalytics', {
                     if (recordsetIndex === 0) {
                         result.summary[columns[0].value] = columns[1].value;
                     } else if (recordsetIndex === 1) {
-                        result.topShops.push({ name: columns[0].value, views: columns[1].value });
+                        result.topShops.push({ 
+                            name: columns[0].value, 
+                            uniqueVisitors: columns[1].value,
+                            totalViews: columns[2].value 
+                        });
                     } else {
-                        // 🔥 Map the third result set
-                        result.shoppers.push({ name: columns[0].value, email: columns[1].value, id: columns[2].value });
+                        result.shoppers.push({ 
+                            name: columns[0].value, 
+                            email: columns[1].value, 
+                            id: columns[2].value,
+                            lastSeen: columns[3].value 
+                        });
                     }
                 });
 
+                // TSQL uses 'doneInProc' to signal the end of one SELECT statement in a batch
                 req.on('doneInProc', () => { recordsetIndex++; });
                 connection.execSql(req);
             });
