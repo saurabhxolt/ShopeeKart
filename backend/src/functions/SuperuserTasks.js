@@ -7,12 +7,13 @@ app.http('SuperuserTasks', {
     authLevel: 'anonymous',
     handler: async (request, context) => {
         try {
-            const { action, targetId, message } = await request.json();
+            // 🔥 NEW: Added "value" to the destructured JSON for the commission update
+            const { action, targetId, message, value } = await request.json();
 
             await sql.connect(process.env.SQL_CONNECTION);
 
             // ==========================================
-            // 🔥 NEW: Advanced Transaction for Order Cancellation
+            // Advanced Transaction for Order Cancellation
             // ==========================================
             if (action === 'FORCE_CANCEL_ORDER') {
                 const transaction = new sql.Transaction();
@@ -72,6 +73,11 @@ app.http('SuperuserTasks', {
             const dbRequest = new sql.Request();
             dbRequest.input('id', sql.Int, targetId);
             dbRequest.input('message', sql.NVarChar, message || null);
+            
+            // Pass the float value safely if it exists in the payload
+            if (value !== undefined) {
+                dbRequest.input('val', sql.Float, value);
+            }
 
             let query = "";
 
@@ -104,6 +110,18 @@ app.http('SuperuserTasks', {
                         AdminMessage = CASE WHEN IsArchived = 1 THEN NULL ELSE @message END,
                         FixSubmitted = 0
                     WHERE ProductId = @id
+                `;
+            }
+            // 🔥 NEW: Custom Admin Override for Commission
+            else if (action === 'UPDATE_COMMISSION') {
+                if (value === undefined || value < 0 || value > 1) {
+                    return { status: 400, body: "Invalid commission value. Must be between 0 and 1." };
+                }
+                query = `
+                    UPDATE Sellers 
+                    SET CommissionRate = @val, 
+                        SubscriptionPlan = 'Custom (Admin)' 
+                    WHERE SellerId = @id
                 `;
             }
 

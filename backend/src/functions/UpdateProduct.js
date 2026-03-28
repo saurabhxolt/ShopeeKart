@@ -15,7 +15,8 @@ app.http('UpdateProduct', {
         try {
             const { 
                 productId, name, price, stock, imageUrl, 
-                description, originalPrice, category, brand, weight, sku, isActive 
+                description, originalPrice, category, brand, weight, sku, isActive,
+                gstPercentage, hsnCode // 🔥 NEW: Extract tax fields
             } = await request.json();
 
             // --- 1. AZURE BLOB STORAGE LOGIC ---
@@ -69,7 +70,7 @@ app.http('UpdateProduct', {
                 connection.on('connect', (err) => {
                     if (err) return resolve({ status: 500, jsonBody: { error: "DB Connection Error: " + err.message } });
 
-                    // 🔥 UPDATED QUERY: Automatically sets FixSubmitted to 1 if the product is currently archived
+                    // 🔥 UPDATED QUERY: Added GSTPercentage and HSNCode
                     const query = `
                         UPDATE Products 
                         SET Name = @name, 
@@ -83,6 +84,8 @@ app.http('UpdateProduct', {
                             Weight = @weight,
                             SKU = @sku,
                             IsActive = @active,
+                            GSTPercentage = @gst,
+                            HSNCode = @hsn,
                             FixSubmitted = CASE WHEN IsArchived = 1 THEN 1 ELSE FixSubmitted END
                         WHERE ProductId = @pid
                     `;
@@ -95,16 +98,22 @@ app.http('UpdateProduct', {
 
                     req.addParameter('pid', TYPES.Int, productId);
                     req.addParameter('name', TYPES.VarChar, name);
-                    req.addParameter('price', TYPES.Decimal, price);
+                    
+                    // 🔥 FIX: ADDED PRECISION AND SCALE TO ALL DECIMAL FIELDS
+                    req.addParameter('price', TYPES.Decimal, price, { precision: 18, scale: 2 });
                     req.addParameter('stock', TYPES.Int, stock);
                     req.addParameter('img', TYPES.NVarChar, finalImageUrlString); 
                     req.addParameter('desc', TYPES.NVarChar, description || null);
-                    req.addParameter('origPrice', TYPES.Decimal, originalPrice || null);
+                    req.addParameter('origPrice', TYPES.Decimal, originalPrice || null, { precision: 18, scale: 2 });
                     req.addParameter('cat', TYPES.VarChar, category || null);
                     req.addParameter('brand', TYPES.VarChar, brand || null);
-                    req.addParameter('weight', TYPES.Decimal, weight || null);
+                    req.addParameter('weight', TYPES.Decimal, weight || null, { precision: 10, scale: 2 });
                     req.addParameter('sku', TYPES.VarChar, sku || null);
                     req.addParameter('active', TYPES.Bit, isActive !== undefined ? isActive : 1);
+                    
+                    // 🔥 NEW: Tax Fields with Precision
+                    req.addParameter('gst', TYPES.Decimal, gstPercentage !== undefined ? parseFloat(gstPercentage) : 0.18, { precision: 4, scale: 2 });
+                    req.addParameter('hsn', TYPES.VarChar, hsnCode || null);
 
                     connection.execSql(req);
                 });

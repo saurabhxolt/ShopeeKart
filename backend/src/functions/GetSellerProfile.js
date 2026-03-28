@@ -26,9 +26,14 @@ app.http('GetSellerProfile', {
                     return;
                 }
 
-                // 🔥 FIX: Added VerificationDoc
+                // 🔥 UPDATED: Added PAN, Aadhar, and the 4 KYC Document URL columns
                 const query = `
-                    SELECT StoreName, Description, SupportEmail, SupportPhone, PickupAddress, GSTIN, BankAccount, IFSC, StoreLogo, StoreBanner, VerificationDoc 
+                    SELECT 
+                        StoreName, Description, SupportEmail, SupportPhone, PickupAddress, 
+                        GSTIN, BankAccount, IFSC, StoreLogo, StoreBanner, VerificationDoc,
+                        ISNULL(SubscriptionPlan, 'Starter') AS SubscriptionPlan,
+                        ISNULL(CommissionRate, 0.10) AS CommissionRate,
+                        PAN, Aadhar, PanDocUrl, GstDocUrl, ChequeDocUrl, SignatureUrl
                     FROM Sellers 
                     WHERE UserId = @userId
                 `;
@@ -55,7 +60,16 @@ app.http('GetSellerProfile', {
                         ifsc: columns[7].value || '',
                         storeLogo: columns[8].value || '',      
                         storeBanner: columns[9].value || '',    
-                        verificationDoc: columns[10].value || '' // 🔥 FIX: Mapped the Document
+                        verificationDoc: columns[10].value || '',
+                        plan: columns[11].value,
+                        commissionRate: columns[12].value,
+                        // 🔥 NEW: Mapped the KYC data to the frontend state variables
+                        pan: columns[13].value || '',
+                        aadhar: columns[14].value || '',
+                        panDoc: columns[15].value || '',
+                        gstDoc: columns[16].value || '',
+                        chequeDoc: columns[17].value || '',
+                        signature: columns[18].value || ''
                     };
                 });
 

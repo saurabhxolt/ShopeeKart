@@ -1,11 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-// 🔥 Added LiveTrafficTab to the imports
-import { AnalyticsCards, OverviewTab, OrdersTab, ProductsTab, SellersTab, BuyersTab, SecurityTab, IntelligenceTab, LiveTrafficTab } from './AdminTabs';
+import { AnalyticsCards, OverviewTab, OrdersTab, ProductsTab, SellersTab, BuyersTab, SecurityTab, IntelligenceTab, LiveTrafficTab, SettlementsTab } from './AdminTabs';
 import { ManageOrderModal, ProductReviewModal, SellerReviewModal } from './AdminModals';
 
 const TabButton = ({ label, isActive, onClick, alertCount }) => (
-  <button onClick={onClick} style={{ padding: '12px 20px', fontSize: '16px', fontWeight: 'bold', background: 'none', border: 'none', borderBottom: isActive ? '4px solid #007bff' : '4px solid transparent', color: isActive ? '#007bff' : '#666', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}>
+  <button onClick={onClick} style={{ padding: '12px 20px', fontSize: '16px', fontWeight: 'bold', background: 'none', border: 'none', borderBottom: isActive ? '4px solid #007bff' : '4px solid transparent', color: isActive ? '#007bff' : '#666', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', whiteSpace: 'nowrap' }}>
     {label}
     {alertCount > 0 && <span style={{ background: '#dc3545', color: 'white', padding: '2px 8px', borderRadius: '12px', fontSize: '12px' }}>{alertCount}</span>}
   </button>
@@ -29,6 +28,10 @@ function AdminDashboard({ user }) {
   const [marketplaceStats, setMarketplaceStats] = useState([]);
   const [isTrafficLoading, setIsTrafficLoading] = useState(true);
 
+  const [settlements, setSettlements] = useState([]);
+  const [isLoadingSettlements, setIsLoadingSettlements] = useState(false);
+  const [processingId, setProcessingId] = useState(null);
+
   const [intelSearch, setIntelSearch] = useState('');
   const [intelCategoryFilter, setIntelCategoryFilter] = useState('ALL');
   const [intelSortKey, setIntelSortKey] = useState('views_desc'); 
@@ -39,6 +42,14 @@ function AdminDashboard({ user }) {
   const [activeTab, setActiveTab] = useState('overview'); 
   const [productSearch, setProductSearch] = useState('');
   const [orderStoreFilter, setOrderStoreFilter] = useState('ALL'); 
+
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+
+  useEffect(() => {
+      const handleResize = () => setIsMobile(window.innerWidth < 768);
+      window.addEventListener('resize', handleResize);
+      return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   const fetchData = async () => {
     try {
@@ -56,6 +67,22 @@ function AdminDashboard({ user }) {
       console.error("Failed to load admin data");
     }
   };
+
+  const fetchSettlements = async () => {
+    setIsLoadingSettlements(true);
+    try {
+        const res = await axios.get('http://localhost:7071/api/GetSettlements');
+        setSettlements(res.data);
+    } catch (err) {
+        console.error("Failed to load settlements", err);
+    } finally {
+        setIsLoadingSettlements(false);
+    }
+  };
+
+  useEffect(() => {
+      fetchSettlements();
+  }, []);
 
   useEffect(() => {
     const fetchAnalytics = async () => {
@@ -92,6 +119,9 @@ function AdminDashboard({ user }) {
       };
       if (activeTab === 'security') {
           fetchSecurityLogs();
+      }
+      if (activeTab === 'settlements') {
+          fetchSettlements();
       }
   }, [activeTab]); 
 
@@ -132,6 +162,34 @@ function AdminDashboard({ user }) {
     }
   };
 
+  // 🔥 NEW: Handle Admin Commission Override
+  const handleUpdateCommission = async (sellerId, currentRate, storeName) => {
+      const currentPercent = (currentRate * 100).toFixed(1);
+      const input = window.prompt(`Admin Override: Set new commission rate for ${storeName}\n\nCurrent Rate: ${currentPercent}%\n\nEnter new rate as a percentage (e.g. type '12.5' for 12.5%):`, currentPercent);
+
+      if (input === null || input.trim() === "") return;
+
+      const newRatePercent = parseFloat(input);
+      if (isNaN(newRatePercent) || newRatePercent < 0 || newRatePercent > 100) {
+          return alert("Please enter a valid percentage between 0 and 100.");
+      }
+
+      const newDecimalRate = newRatePercent / 100;
+
+      try {
+          await axios.post('http://localhost:7071/api/super-task', { 
+              action: 'UPDATE_COMMISSION', 
+              targetId: sellerId, 
+              value: newDecimalRate 
+          });
+          
+          alert(`Success! Commission rate for ${storeName} updated to ${newRatePercent}%`);
+          fetchData(); // Refresh the data to show the new rate instantly
+      } catch (err) {
+          alert("Action failed: " + err.message);
+      }
+  };
+
   const handleToggleProduct = async (product) => {
       let adminMessage = "";
       if (product.IsArchived) {
@@ -148,6 +206,21 @@ function AdminDashboard({ user }) {
           await axios.post('http://localhost:7071/api/super-task', { action: 'TOGGLE_PRODUCT', targetId: product.ProductId, message: adminMessage, clearFixFlag: product.IsArchived ? true : false });
           fetchData(); 
       } catch (err) { alert("Action failed: " + err.message); }
+  };
+
+  const handleMarkAsPaid = async (sellerId, storeName, amount) => {
+      if (!window.confirm(`Are you sure you have transferred ₹${amount} to ${storeName}'s bank account? \n\nClicking OK will mark these items as Paid.`)) return;
+      
+      setProcessingId(sellerId);
+      try {
+          await axios.post('http://localhost:7071/api/ProcessSettlement', { sellerId });
+          alert(`Successfully settled payout for ${storeName}`);
+          fetchSettlements(); 
+      } catch (err) {
+          alert("Failed to process settlement");
+      } finally {
+          setProcessingId(null);
+      }
   };
 
   const pendingSellers = allSellers.filter(s => !s.IsApproved && !s.IsDeleted);
@@ -189,15 +262,13 @@ function AdminDashboard({ user }) {
         isTrafficLoading={isTrafficLoading}
       />
 
-      <div style={{ display: 'flex', borderBottom: '2px solid #ddd', marginBottom: '25px', gap: '30px', overflowX: 'auto' }}>
+      <div style={{ display: 'flex', borderBottom: '2px solid #ddd', marginBottom: '25px', gap: '30px', overflowX: 'auto', paddingBottom: '5px' }}>
         <TabButton label="📊 Action Overview" isActive={activeTab === 'overview'} onClick={() => setActiveTab('overview')} alertCount={pendingSellers.length} />
-        
-        {/* 🔥 NEW TAB BUTTON */}
         <TabButton label="📡 Live Traffic" isActive={activeTab === 'live'} onClick={() => setActiveTab('live')} />
-        
         <TabButton label="📈 Marketplace Intelligence" isActive={activeTab === 'intelligence'} onClick={() => setActiveTab('intelligence')} />
         <TabButton label="📦 Product Moderation" isActive={activeTab === 'products'} onClick={() => setActiveTab('products')} alertCount={allProducts.filter(p => (p.fixSubmitted || p.FixSubmitted) && p.IsArchived).length} />
         <TabButton label="🚛 All Shipments" isActive={activeTab === 'orders'} onClick={() => setActiveTab('orders')} alertCount={allOrders.filter(o => o.Status === 'Placed' && o.HoursSincePlaced > 48).length} />
+        <TabButton label="🏦 Settlements" isActive={activeTab === 'settlements'} onClick={() => setActiveTab('settlements')} alertCount={settlements.length} />
         <TabButton label="🏪 Manage Sellers" isActive={activeTab === 'sellers'} onClick={() => setActiveTab('sellers')} />
         <TabButton label="🛍️ Manage Buyers" isActive={activeTab === 'buyers'} onClick={() => setActiveTab('buyers')} />
         <TabButton label="🛡️ Security & Logs" isActive={activeTab === 'security'} onClick={() => setActiveTab('security')} />
@@ -208,11 +279,9 @@ function AdminDashboard({ user }) {
             pendingSellers={pendingSellers} 
             setReviewingSeller={setReviewingSeller} 
             topShops={trafficData.topShops}
-            // 🔥 Removed shoppers from here
         />
       )}
 
-      {/* 🔥 NEW TAB COMPONENT */}
       {activeTab === 'live' && (
           <LiveTrafficTab shoppers={trafficData.shoppers} />
       )}
@@ -232,8 +301,23 @@ function AdminDashboard({ user }) {
       )}
       
       {activeTab === 'orders' && <OrdersTab filteredOrders={filteredOrders} uniqueOrderStores={uniqueOrderStores} orderStoreFilter={orderStoreFilter} setOrderStoreFilter={setOrderStoreFilter} setManagingOrder={setManagingOrder} />}
+      
+      {activeTab === 'settlements' && (
+        <SettlementsTab 
+            settlements={settlements} 
+            isLoadingSettlements={isLoadingSettlements} 
+            fetchSettlements={fetchSettlements} 
+            handleMarkAsPaid={handleMarkAsPaid} 
+            processingId={processingId}
+            isMobile={isMobile}
+        />
+      )}
+
       {activeTab === 'products' && <ProductsTab filteredProducts={filteredProducts} productSearch={productSearch} setProductSearch={setProductSearch} setViewingProduct={setViewingProduct} handleToggleProduct={handleToggleProduct} />}
-      {activeTab === 'sellers' && <SellersTab activeSellers={activeSellers} allUsers={allUsers} handleAction={handleAction} />}
+      
+      {/* 🔥 NEW: Passed handleUpdateCommission down to SellersTab */}
+      {activeTab === 'sellers' && <SellersTab activeSellers={activeSellers} allUsers={allUsers} handleAction={handleAction} handleUpdateCommission={handleUpdateCommission} />}
+      
       {activeTab === 'buyers' && <BuyersTab activeBuyers={activeBuyers} allUsers={allUsers} handleAction={handleAction} />}
       
       {activeTab === 'security' && (

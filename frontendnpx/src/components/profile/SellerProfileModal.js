@@ -11,7 +11,9 @@ const SellerProfileModal = ({ isOpen, onClose, userId }) => {
     const [profile, setProfile] = useState({
         storeName: '', description: '', supportEmail: '', supportPhone: '',
         pickupAddress: '', gstin: '', bankAccount: '', ifsc: '',
-        storeLogo: '', storeBanner: '', verificationDoc: [] 
+        storeLogo: '', storeBanner: '', verificationDoc: [],
+        // 🔥 NEW: Added KYC Fields
+        pan: '', aadhar: '', panDoc: '', gstDoc: '', chequeDoc: '', signature: ''
     });
 
     const [cropConfig, setCropConfig] = useState({ src: null, type: null, aspect: 1 });
@@ -19,7 +21,6 @@ const SellerProfileModal = ({ isOpen, onClose, userId }) => {
     const [zoom, setZoom] = useState(1);
     const [croppedAreaPixels, setCroppedAreaPixels] = useState(null);
 
-    // 🔥 ADDED: Viewport detection for mobile responsiveness
     const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
 
     useEffect(() => {
@@ -54,6 +55,7 @@ const SellerProfileModal = ({ isOpen, onClose, userId }) => {
 
     const handleChange = (e) => setProfile({ ...profile, [e.target.name]: e.target.value });
 
+    // Handle Cropped Images (Logo & Banner)
     const onFileChange = (e, type) => {
         if (e.target.files && e.target.files.length > 0) {
             const file = e.target.files[0];
@@ -67,6 +69,18 @@ const SellerProfileModal = ({ isOpen, onClose, userId }) => {
         }
     };
 
+    // 🔥 NEW: Handle specific KYC Document uploads (PDF/Images to Base64)
+    const handleKycFileChange = (e, fieldName) => {
+        if (e.target.files && e.target.files.length > 0) {
+            const file = e.target.files[0];
+            const reader = new FileReader();
+            reader.readAsDataURL(file);
+            reader.onload = () => {
+                setProfile(prev => ({ ...prev, [fieldName]: reader.result }));
+            };
+        }
+    };
+
     const handleCropComplete = async () => {
         try {
             const croppedBase64 = await getCroppedImg(cropConfig.src, croppedAreaPixels);
@@ -77,17 +91,16 @@ const SellerProfileModal = ({ isOpen, onClose, userId }) => {
         }
     };
 
+    // Legacy generic document handler (kept for backwards compatibility if needed)
     const onDocumentChange = async (e) => {
         if (e.target.files && e.target.files.length > 0) {
             const files = Array.from(e.target.files);
-            
             const invalidFiles = files.filter(f => f.type !== 'application/pdf');
             if (invalidFiles.length > 0) {
                 alert("Only PDF files are allowed for KYC documents.");
                 e.target.value = null;
                 return;
             }
-
             const base64Promises = files.map(file => {
                 return new Promise((resolve) => {
                     const reader = new FileReader();
@@ -95,13 +108,13 @@ const SellerProfileModal = ({ isOpen, onClose, userId }) => {
                     reader.readAsDataURL(file);
                 });
             });
-
             const base64Docs = await Promise.all(base64Promises);
             setProfile(prev => ({ ...prev, verificationDoc: base64Docs }));
         }
     };
 
     const openDocSafe = (docString) => {
+        if (!docString) return;
         if (docString.startsWith('data:')) {
             const mimeType = docString.split(';')[0].split(':')[1];
             const base64Data = docString.split(',')[1];
@@ -120,6 +133,10 @@ const SellerProfileModal = ({ isOpen, onClose, userId }) => {
     };
 
     const handleSaveProfile = async () => {
+        if (!profile.storeName || !profile.pan || !profile.gstin || !profile.bankAccount || !profile.ifsc) {
+            return setMessage({ text: '❌ Store Name, PAN, GSTIN, and Bank Details are mandatory!', type: 'error' });
+        }
+
         setSaving(true);
         setMessage({ text: '', type: '' });
         try {
@@ -159,10 +176,10 @@ const SellerProfileModal = ({ isOpen, onClose, userId }) => {
 
                         {loading ? <div style={{ textAlign: 'center', padding: '40px' }}>Loading...</div> : (
                             <>
+                                {/* --- BASIC STORE INFO --- */}
                                 <div style={{ background: 'white', padding: isMobile ? '15px' : '20px', borderRadius: '10px', marginBottom: '20px', boxShadow: '0 2px 5px rgba(0,0,0,0.05)' }}>
                                     <h4 style={{ margin: '0 0 15px 0', color: '#007bff', borderBottom: '1px solid #eee', paddingBottom: '10px' }}>🛍️ Public Storefront</h4>
                                     
-                                    {/* 🔥 MOBILE FIX: Stack Logo and Banner vertically */}
                                     <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: '20px', marginBottom: '25px', padding: '15px', background: '#f8f9fa', borderRadius: '8px', border: '1px dashed #ccc' }}>
                                         <div style={{ width: isMobile ? '100%' : '140px', textAlign: 'center' }}>
                                             <label style={labelStyle}>Store Logo</label>
@@ -195,49 +212,79 @@ const SellerProfileModal = ({ isOpen, onClose, userId }) => {
                                         </div>
                                     </div>
 
-                                    {/* 🔥 MOBILE FIX: Grid defaults to 1 column on mobile */}
                                     <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '15px', marginBottom: '15px' }}>
-                                        <div><label style={labelStyle}>Store Name</label><input name="storeName" value={profile.storeName} onChange={handleChange} style={inputStyle} /></div>
+                                        <div><label style={labelStyle}>Store Name *</label><input name="storeName" value={profile.storeName} onChange={handleChange} style={inputStyle} /></div>
                                         <div><label style={labelStyle}>Support Phone</label><input type="tel" name="supportPhone" value={profile.supportPhone} onChange={handleChange} style={inputStyle} /></div>
                                     </div>
                                     <div style={{ marginBottom: '15px' }}><label style={labelStyle}>Support Email</label><input type="email" name="supportEmail" value={profile.supportEmail} onChange={handleChange} style={inputStyle} /></div>
-                                    <div><label style={labelStyle}>Store Description</label><textarea name="description" value={profile.description} onChange={handleChange} style={{ ...inputStyle, height: '80px', fontFamily: 'inherit' }} /></div>
+                                    <div style={{ marginBottom: '15px' }}><label style={labelStyle}>Store Description</label><textarea name="description" value={profile.description} onChange={handleChange} style={{ ...inputStyle, height: '80px', fontFamily: 'inherit' }} /></div>
+                                    <div><label style={labelStyle}>Pickup Address (For Shipping)</label><textarea name="pickupAddress" value={profile.pickupAddress} onChange={handleChange} style={{ ...inputStyle, height: '60px', fontFamily: 'inherit' }} /></div>
                                 </div>
 
-                                <div style={{ background: 'white', padding: isMobile ? '15px' : '20px', borderRadius: '10px', marginBottom: '20px', boxShadow: '0 2px 5px rgba(0,0,0,0.05)' }}>
-                                    <h4 style={{ margin: '0 0 15px 0', color: '#28a745', borderBottom: '1px solid #eee', paddingBottom: '10px' }}>🚚 Logistics & Compliance</h4>
-                                    <div style={{ marginBottom: '15px' }}><label style={labelStyle}>Pickup Address</label><textarea name="pickupAddress" value={profile.pickupAddress} onChange={handleChange} style={{ ...inputStyle, height: '60px', fontFamily: 'inherit' }} /></div>
+                                {/* --- LEGAL & KYC INFO --- */}
+                                <div style={{ background: 'white', padding: isMobile ? '15px' : '20px', borderRadius: '10px', marginBottom: '20px', boxShadow: '0 2px 5px rgba(0,0,0,0.05)', borderLeft: '4px solid #856404' }}>
+                                    <h4 style={{ margin: '0 0 5px 0', color: '#856404' }}>⚖️ Legal & KYC Compliance</h4>
+                                    <p style={{ fontSize: '12px', color: '#666', marginBottom: '15px', marginTop: 0 }}>Required for Tax Deductions (TDS/TCS) and Payouts.</p>
                                     
                                     <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '15px' }}>
-                                        <div><label style={labelStyle}>GSTIN / PAN Number</label><input name="gstin" value={profile.gstin} onChange={handleChange} style={inputStyle} /></div>
-                                        
+                                        {/* PAN Card */}
                                         <div>
-                                            <label style={labelStyle}>KYC Documents (PDF Only)</label>
-                                            <input type="file" accept=".pdf" multiple onChange={onDocumentChange} style={{ fontSize: '11px', width: '100%', marginBottom: '10px', padding: '8px', border: '1px solid #ccc', borderRadius: '4px' }} />
-                                            
-                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                                                {profile.verificationDoc && profile.verificationDoc.length > 0 && profile.verificationDoc.map((doc, idx) => (
-                                                    <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8f9fa', padding: '8px 10px', borderRadius: '4px', border: '1px solid #ddd' }}>
-                                                        <span style={{ fontSize: '12px' }}>📄 Doc {idx + 1}</span>
-                                                        <button type="button" onClick={() => openDocSafe(doc)} style={{ background: 'none', border: 'none', color: '#007bff', fontWeight: 'bold', cursor: 'pointer', fontSize: '12px' }}>
-                                                            👁️ View
-                                                        </button>
-                                                    </div>
-                                                ))}
-                                            </div>
+                                            <label style={labelStyle}>PAN Number *</label>
+                                            <input name="pan" value={profile.pan} onChange={handleChange} maxLength="10" placeholder="ABCDE1234F" style={{...inputStyle, textTransform: 'uppercase'}} />
+                                        </div>
+                                        <div>
+                                            <label style={{...labelStyle, display: 'flex', justifyContent: 'space-between'}}>
+                                                Upload PAN Card *
+                                                {profile.panDoc && <span onClick={() => openDocSafe(profile.panDoc)} style={{color: '#007bff', cursor: 'pointer', textTransform: 'none'}}>👁️ View</span>}
+                                            </label>
+                                            <input type="file" accept="image/*,.pdf" onChange={(e) => handleKycFileChange(e, 'panDoc')} style={{ fontSize: '11px', width: '100%', padding: '10px', background: '#f8f9fa', border: '1px solid #ccc', borderRadius: '6px' }} />
+                                        </div>
+
+                                        {/* GSTIN */}
+                                        <div>
+                                            <label style={labelStyle}>GSTIN Number *</label>
+                                            <input name="gstin" value={profile.gstin} onChange={handleChange} maxLength="15" placeholder="22AAAAA0000A1Z5" style={{...inputStyle, textTransform: 'uppercase'}} />
+                                        </div>
+                                        <div>
+                                            <label style={{...labelStyle, display: 'flex', justifyContent: 'space-between'}}>
+                                                Upload GST Certificate *
+                                                {profile.gstDoc && <span onClick={() => openDocSafe(profile.gstDoc)} style={{color: '#007bff', cursor: 'pointer', textTransform: 'none'}}>👁️ View</span>}
+                                            </label>
+                                            <input type="file" accept="image/*,.pdf" onChange={(e) => handleKycFileChange(e, 'gstDoc')} style={{ fontSize: '11px', width: '100%', padding: '10px', background: '#f8f9fa', border: '1px solid #ccc', borderRadius: '6px' }} />
+                                        </div>
+
+                                        {/* Aadhar & Signature */}
+                                        <div>
+                                            <label style={labelStyle}>Aadhar Number</label>
+                                            <input name="aadhar" value={profile.aadhar} onChange={handleChange} maxLength="12" style={inputStyle} />
+                                        </div>
+                                        <div>
+                                            <label style={{...labelStyle, display: 'flex', justifyContent: 'space-between'}}>
+                                                Signature (For Invoices) *
+                                                {profile.signature && <span onClick={() => openDocSafe(profile.signature)} style={{color: '#007bff', cursor: 'pointer', textTransform: 'none'}}>👁️ View</span>}
+                                            </label>
+                                            <input type="file" accept="image/*" onChange={(e) => handleKycFileChange(e, 'signature')} style={{ fontSize: '11px', width: '100%', padding: '10px', background: '#f8f9fa', border: '1px solid #ccc', borderRadius: '6px' }} />
                                         </div>
                                     </div>
                                 </div>
 
-                                <div style={{ background: 'white', padding: isMobile ? '15px' : '20px', borderRadius: '10px', marginBottom: '20px', boxShadow: '0 2px 5px rgba(0,0,0,0.05)' }}>
-                                    <h4 style={{ margin: '0 0 15px 0', color: '#dc3545', borderBottom: '1px solid #eee', paddingBottom: '10px' }}>💰 Payout Information</h4>
+                                {/* --- BANKING INFO --- */}
+                                <div style={{ background: 'white', padding: isMobile ? '15px' : '20px', borderRadius: '10px', marginBottom: '20px', boxShadow: '0 2px 5px rgba(0,0,0,0.05)', borderLeft: '4px solid #17a2b8' }}>
+                                    <h4 style={{ margin: '0 0 15px 0', color: '#17a2b8' }}>🏦 Payout Details</h4>
+                                    
                                     <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '15px' }}>
-                                        <div><label style={labelStyle}>Bank Account Number</label><input type="password" name="bankAccount" value={profile.bankAccount} onChange={handleChange} style={inputStyle} /></div>
-                                        <div><label style={labelStyle}>Bank IFSC Code</label><input name="ifsc" value={profile.ifsc} onChange={handleChange} style={inputStyle} /></div>
+                                        <div><label style={labelStyle}>Bank Account Number *</label><input type="password" name="bankAccount" value={profile.bankAccount} onChange={handleChange} style={inputStyle} /></div>
+                                        <div><label style={labelStyle}>Bank IFSC Code *</label><input name="ifsc" value={profile.ifsc} onChange={handleChange} style={{...inputStyle, textTransform: 'uppercase'}} /></div>
+                                        <div style={{ gridColumn: isMobile ? 'span 1' : 'span 2' }}>
+                                            <label style={{...labelStyle, display: 'flex', justifyContent: 'space-between'}}>
+                                                Cancelled Cheque *
+                                                {profile.chequeDoc && <span onClick={() => openDocSafe(profile.chequeDoc)} style={{color: '#007bff', cursor: 'pointer', textTransform: 'none'}}>👁️ View</span>}
+                                            </label>
+                                            <input type="file" accept="image/*,.pdf" onChange={(e) => handleKycFileChange(e, 'chequeDoc')} style={{ fontSize: '11px', width: '100%', padding: '10px', background: '#f8f9fa', border: '1px solid #ccc', borderRadius: '6px' }} />
+                                        </div>
                                     </div>
                                 </div>
 
-                                {/* 🔥 MOBILE FIX: Stack buttons vertically on small screens */}
                                 <div style={{ display: 'flex', flexDirection: isMobile ? 'column-reverse' : 'row', gap: '15px', marginTop: '20px' }}>
                                     <button onClick={onClose} style={{ flex: 1, padding: '14px', border: '1px solid #ccc', background: 'white', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>Cancel</button>
                                     <button onClick={handleSaveProfile} disabled={saving} style={{ flex: 2, padding: '14px', border: 'none', background: '#007bff', color: 'white', borderRadius: '8px', cursor: saving ? 'wait' : 'pointer', fontWeight: 'bold' }}>
@@ -250,14 +297,13 @@ const SellerProfileModal = ({ isOpen, onClose, userId }) => {
                 </div>
             </div>
 
-            {/* --- CROP STUDIO OVERLAY --- */}
+            {/* --- CROP STUDIO OVERLAY (Unchanged) --- */}
             {cropConfig.src && (
                 <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.95)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 3000, padding: isMobile ? '10px' : '0' }}>
                     <div style={{ color: 'white', marginBottom: '20px', fontSize: isMobile ? '16px' : '20px', fontWeight: 'bold', textAlign: 'center' }}>
                         Crop your {cropConfig.type === 'storeLogo' ? 'Store Logo' : 'Store Banner'}
                     </div>
                     
-                    {/* Make cropper fit inside mobile screen */}
                     <div style={{ position: 'relative', width: isMobile ? '100%' : '80%', height: isMobile ? '50%' : '60%', backgroundColor: '#222', borderRadius: '8px', overflow: 'hidden' }}>
                         <Cropper image={cropConfig.src} crop={crop} zoom={zoom} aspect={cropConfig.aspect} onCropChange={setCrop} onCropComplete={(croppedArea, croppedAreaPixels) => setCroppedAreaPixels(croppedAreaPixels)} onZoomChange={setZoom} cropShape={cropConfig.type === 'storeLogo' ? 'round' : 'rect'} />
                     </div>

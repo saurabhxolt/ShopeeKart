@@ -14,7 +14,14 @@ app.http('UpdateSellerProfile', {
     handler: async (request, context) => {
         try {
             const body = await request.json();
-            let { userId, storeName, description, supportEmail, supportPhone, pickupAddress, gstin, bankAccount, ifsc, storeLogo, storeBanner, verificationDoc } = body;
+            
+            // 🔥 UPDATED: Extracted all the new KYC fields from the request body
+            let { 
+                userId, storeName, description, supportEmail, supportPhone, 
+                pickupAddress, gstin, bankAccount, ifsc, storeLogo, storeBanner, 
+                verificationDoc, // Legacy array (if you still use it)
+                pan, aadhar, panDoc, gstDoc, chequeDoc, signature // 🔥 NEW KYC DATA
+            } = body;
 
             if (!userId) return { status: 400, body: "Missing userId" };
 
@@ -31,17 +38,14 @@ app.http('UpdateSellerProfile', {
                 if (!matches || matches.length !== 3) return base64Str;
 
                 const mimeType = matches[1];
-                // Safely extract extension to handle PDFs vs Images correctly
                 let extension = mimeType.split('/')[1];
                 if (extension === 'jpeg') extension = 'jpg';
                 if (mimeType === 'application/pdf') extension = 'pdf';
 
                 const buffer = Buffer.from(matches[2], 'base64');
-                
                 const blobName = `${Date.now()}-${prefix}-user${userId}.${extension}`;
                 const blockBlobClient = containerClient.getBlockBlobClient(blobName);
 
-                // 🔥 FIX: Added 'inline' disposition to stop IDM from hijacking the link
                 await blockBlobClient.uploadData(buffer, {
                     blobHTTPHeaders: { 
                         blobContentType: mimeType,
@@ -52,18 +56,24 @@ app.http('UpdateSellerProfile', {
                 return blockBlobClient.url;
             };
 
+            // Upload Standard Images
             storeLogo = await uploadToBlob(storeLogo, 'logo');
             storeBanner = await uploadToBlob(storeBanner, 'banner');
 
-            // --- HANDLE MULTIPLE KYC DOCUMENTS ---
+            // 🔥 NEW: Upload specific KYC Documents
+            panDoc = await uploadToBlob(panDoc, 'kyc-pan');
+            gstDoc = await uploadToBlob(gstDoc, 'kyc-gst');
+            chequeDoc = await uploadToBlob(chequeDoc, 'kyc-cheque');
+            signature = await uploadToBlob(signature, 'kyc-signature');
+
+            // --- HANDLE MULTIPLE KYC DOCUMENTS (Legacy fallback) ---
             let finalKycUrls = [];
             if (verificationDoc && Array.isArray(verificationDoc)) {
                 for (let i = 0; i < verificationDoc.length; i++) {
-                    const uploadedUrl = await uploadToBlob(verificationDoc[i], `kyc-${i}`);
+                    const uploadedUrl = await uploadToBlob(verificationDoc[i], `kyc-legacy-${i}`);
                     if (uploadedUrl) finalKycUrls.push(uploadedUrl);
                 }
             }
-
             const verificationDocString = JSON.stringify(finalKycUrls);
 
             // --- 2. SQL DATABASE UPDATE ---
@@ -73,21 +83,37 @@ app.http('UpdateSellerProfile', {
                 connection.on('connect', (err) => {
                     if (err) return resolve({ status: 500, body: "Database connection failed" });
 
+                    // 🔥 UPDATED: Added the 6 new columns to the SET statement
                     const query = `
                         UPDATE Sellers 
-                        SET StoreName = @storeName, Description = @description, SupportEmail = @supportEmail, 
-                            SupportPhone = @supportPhone, PickupAddress = @pickupAddress, GSTIN = @gstin, 
-                            BankAccount = @bankAccount, IFSC = @ifsc, StoreLogo = @storeLogo,
-                            StoreBanner = @storeBanner, VerificationDoc = @verificationDoc, IsApproved = 0 
+                        SET StoreName = @storeName, 
+                            Description = @description, 
+                            SupportEmail = @supportEmail, 
+                            SupportPhone = @supportPhone, 
+                            PickupAddress = @pickupAddress, 
+                            GSTIN = @gstin, 
+                            BankAccount = @bankAccount, 
+                            IFSC = @ifsc, 
+                            StoreLogo = @storeLogo,
+                            StoreBanner = @storeBanner, 
+                            VerificationDoc = @verificationDoc,
+                            PAN = @pan,
+                            Aadhar = @aadhar,
+                            PanDocUrl = @panDoc,
+                            GstDocUrl = @gstDoc,
+                            ChequeDocUrl = @chequeDoc,
+                            SignatureUrl = @signature,
+                            IsApproved = 0  -- Setting to 0 triggers the Admin Verification requirement
                         WHERE UserId = @userId
                     `;
 
                     const req = new Request(query, (err) => {
                         connection.close();
-                        if (err) return resolve({ status: 500, body: "Failed to update profile" });
+                        if (err) return resolve({ status: 500, body: "Failed to update profile: " + err.message });
                         resolve({ status: 200, body: "Profile updated successfully" });
                     });
 
+                    // Bind Standard Parameters
                     req.addParameter('userId', TYPES.Int, parseInt(userId));
                     req.addParameter('storeName', TYPES.VarChar, storeName || null);
                     req.addParameter('description', TYPES.NVarChar, description || null);
@@ -99,7 +125,15 @@ app.http('UpdateSellerProfile', {
                     req.addParameter('ifsc', TYPES.VarChar, ifsc || null);
                     req.addParameter('storeLogo', TYPES.VarChar, storeLogo || null); 
                     req.addParameter('storeBanner', TYPES.VarChar, storeBanner || null);
-                    req.addParameter('verificationDoc', TYPES.NVarChar, verificationDocString); // Saving JSON array
+                    req.addParameter('verificationDoc', TYPES.NVarChar, verificationDocString); 
+
+                    // 🔥 NEW: Bind KYC Parameters
+                    req.addParameter('pan', TYPES.VarChar, pan || null);
+                    req.addParameter('aadhar', TYPES.VarChar, aadhar || null);
+                    req.addParameter('panDoc', TYPES.NVarChar, panDoc || null);
+                    req.addParameter('gstDoc', TYPES.NVarChar, gstDoc || null);
+                    req.addParameter('chequeDoc', TYPES.NVarChar, chequeDoc || null);
+                    req.addParameter('signature', TYPES.NVarChar, signature || null);
 
                     connection.execSql(req);
                 });

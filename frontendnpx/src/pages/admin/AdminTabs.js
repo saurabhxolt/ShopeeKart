@@ -215,24 +215,49 @@ export const ProductsTab = ({ filteredProducts, productSearch, setProductSearch,
 );
 
 // --- TAB 4: SELLERS ---
-export const SellersTab = ({ activeSellers, allUsers, handleAction }) => (
+export const SellersTab = ({ activeSellers, allUsers, handleAction, handleUpdateCommission }) => (
   <div className="tab-content fade-in">
     <div style={{ background: '#e8f5e9', padding: '20px', borderRadius: '10px', marginBottom: '30px', boxShadow: '0 2px 5px rgba(0,0,0,0.1)' }}>
       <h2 style={{ color: '#1b5e20', marginTop: 0 }}>✅ Active Shops ({activeSellers.length})</h2>
       <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', background: 'white', borderCollapse: 'collapse', borderRadius: '8px', overflow: 'hidden' }}>
-            <thead><tr style={{ background: '#388e3c', color: 'white', textAlign: 'left' }}><th style={{ padding: '12px' }}>Store Name</th><th style={{ padding: '12px' }}>Owner</th><th>Status</th><th>Actions</th></tr></thead>
-            <tbody>
-              {activeSellers.map(s => (
-                <tr key={s.SellerId} style={{ borderBottom: '1px solid #eee' }}>
-                  <td style={{ padding: '12px', fontWeight: 'bold' }}>{s.StoreName}</td><td style={{ padding: '12px' }}>{s.FullName}</td><td style={{ fontWeight: 'bold', color: '#28a745' }}>Active</td>
-                  <td><button onClick={() => handleAction('BAN', s.SellerId)} style={{ background: '#ffc107', border: 'none', padding: '5px 10px', borderRadius: '4px', cursor:'pointer', fontWeight: 'bold' }}>⏸️ Suspend Shop</button></td>
+            <thead>
+                <tr style={{ background: '#388e3c', color: 'white', textAlign: 'left' }}>
+                    <th style={{ padding: '12px' }}>Store Name</th>
+                    <th style={{ padding: '12px' }}>Owner</th>
+                    <th style={{ padding: '12px' }}>Plan & Fee</th>
+                    <th>Status</th>
+                    <th>Actions</th>
                 </tr>
-              ))}
+            </thead>
+            <tbody>
+              {activeSellers.map(s => {
+                  const currentRate = parseFloat(s.CommissionRate || 0.10);
+                  return (
+                    <tr key={s.SellerId} style={{ borderBottom: '1px solid #eee' }}>
+                      <td style={{ padding: '12px', fontWeight: 'bold' }}>{s.StoreName}</td>
+                      <td style={{ padding: '12px' }}>{s.FullName}</td>
+                      <td style={{ padding: '12px' }}>
+                          <div style={{ fontWeight: 'bold', color: '#dc3545', fontSize: '15px' }}>{(currentRate * 100).toFixed(1)}%</div>
+                          <div style={{ fontSize: '11px', color: '#666', fontWeight: 'bold' }}>{s.SubscriptionPlan || 'Starter'}</div>
+                      </td>
+                      <td style={{ fontWeight: 'bold', color: '#28a745' }}>Active</td>
+                      <td>
+                          <div style={{ display: 'flex', gap: '8px' }}>
+                              {/* 🔥 NEW: Admin Override Button */}
+                              <button onClick={() => handleUpdateCommission(s.SellerId, currentRate, s.StoreName)} style={{ background: '#007bff', color: 'white', border: 'none', padding: '5px 10px', borderRadius: '4px', cursor:'pointer', fontWeight: 'bold' }}>✏️ Edit %</button>
+                              <button onClick={() => handleAction('BAN', s.SellerId)} style={{ background: '#ffc107', border: 'none', padding: '5px 10px', borderRadius: '4px', cursor:'pointer', fontWeight: 'bold' }}>⏸️ Suspend</button>
+                          </div>
+                      </td>
+                    </tr>
+                  );
+              })}
             </tbody>
           </table>
       </div>
     </div>
+    
+    {/* Raw Data Table Below Remains Unchanged */}
     <div style={{ background: '#fff3cd', padding: '20px', borderRadius: '10px', boxShadow: '0 2px 5px rgba(0,0,0,0.1)' }}>
       <h2 style={{ color: '#856404', marginTop: 0 }}>🏪 Seller Account Data (Raw)</h2>
       <div style={{ overflowX: 'auto' }}>
@@ -508,6 +533,127 @@ export const LiveTrafficTab = ({ shoppers }) => {
                     </div>
                 )}
             </div>
+        </div>
+    );
+};
+
+// --- 🔥 TAB 9: SETTLEMENTS TAB ---
+export const SettlementsTab = ({ settlements, isLoadingSettlements, fetchSettlements, handleMarkAsPaid, processingId, isMobile }) => {
+    
+    // ⚙️ FIXED TAX RATES (Commission is now dynamic per seller)
+    const TCS_RATE = 0.01;        // 1% TCS under GST
+    const TDS_RATE = 0.01;        // 1% TDS under Income Tax Act
+
+    return (
+        <div className="tab-content fade-in" style={{ background: 'white', padding: isMobile ? '15px' : '25px', borderRadius: '8px', border: '1px solid #e0e0e0', boxShadow: '0 2px 10px rgba(0,0,0,0.02)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '1px solid #eee', paddingBottom: '15px' }}>
+                <div>
+                    <h3 style={{ margin: '0 0 5px 0', color: '#212121' }}>Pending Seller Payouts</h3>
+                    <p style={{ margin: 0, fontSize: '13px', color: '#878787' }}>These amounts are calculated only from successfully <strong>Delivered prepaid (UPI/Card)</strong> orders. COD is excluded.</p>
+                </div>
+                <button onClick={fetchSettlements} style={{ background: '#f8f9fa', border: '1px solid #ccc', padding: '8px 15px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>
+                    🔄 Refresh
+                </button>
+            </div>
+
+            {isLoadingSettlements ? (
+                <div style={{ textAlign: 'center', padding: '40px', color: '#888' }}>⏳ Calculating pending payouts...</div>
+            ) : settlements.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '50px', color: '#26a541', background: '#f0fff4', borderRadius: '8px', border: '1px dashed #c3e6cb' }}>
+                    <div style={{ fontSize: '40px', marginBottom: '10px' }}>🎉</div>
+                    <h3 style={{ margin: '0 0 5px 0' }}>All Caught Up!</h3>
+                    <p style={{ margin: 0 }}>There are no pending settlements for delivered orders.</p>
+                </div>
+            ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                    {settlements.map((s) => {
+                        
+                        // 🧮 DYNAMIC FINANCIAL MATH
+                        const grossAmount = parseFloat(s.TotalOwed || 0);
+                        const sellerCommissionRate = parseFloat(s.CommissionRate || 0.10); // 🔥 DYNAMIC RATE
+
+                        const commissionAmount = grossAmount * sellerCommissionRate;
+                        const tcsAmount = grossAmount * TCS_RATE;
+                        const tdsAmount = grossAmount * TDS_RATE;
+                        const netPayout = grossAmount - commissionAmount - tcsAmount - tdsAmount;
+
+                        const uniqueOrderIds = s.OrderIds ? [...new Set(s.OrderIds.split(', '))] : [];
+
+                        return (
+                            <div key={s.SellerId} style={{ border: '1px solid #e0e0e0', borderRadius: '8px', padding: '20px', display: 'flex', flexDirection: isMobile ? 'column' : 'row', justifyContent: 'space-between', alignItems: isMobile ? 'flex-start' : 'stretch', gap: isMobile ? '20px' : '30px', background: '#fafafa' }}>
+                                
+                                {/* LEFT: Seller & Order Info */}
+                                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                                    <div>
+                                        <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#212121', marginBottom: '4px' }}>🏪 {s.StoreName}</div>
+                                        <div style={{ fontSize: '13px', color: '#555', marginBottom: '15px' }}>Seller ID: {s.SellerId} | Delivered Items: <strong>{s.TotalItemsDelivered}</strong></div>
+                                        
+                                        <div style={{ marginBottom: '15px' }}>
+                                            <div style={{ fontSize: '12px', color: '#888', textTransform: 'uppercase', marginBottom: '6px', fontWeight: 'bold' }}>Orders included in this settlement:</div>
+                                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                                                {uniqueOrderIds.map(oid => (
+                                                    <span key={oid} style={{ background: '#e3f2fd', color: '#0d47a1', padding: '4px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 'bold', border: '1px solid #b6d4fe' }}>
+                                                        #{oid}
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div style={{ background: 'white', padding: '10px', borderRadius: '6px', border: '1px dashed #ccc', display: 'inline-block', alignSelf: 'flex-start' }}>
+                                        <div style={{ fontSize: '12px', color: '#888', textTransform: 'uppercase', marginBottom: '4px', fontWeight: 'bold' }}>Bank Details</div>
+                                        <div style={{ fontSize: '14px', color: '#333' }}>Acc: <strong>{s.BankAccount || 'Not Provided'}</strong></div>
+                                        <div style={{ fontSize: '14px', color: '#333' }}>IFSC: <strong>{s.IFSC || 'Not Provided'}</strong></div>
+                                    </div>
+                                </div>
+
+                                {/* RIGHT: Financial Breakdown */}
+                                <div style={{ minWidth: isMobile ? '100%' : '320px', background: 'white', padding: '15px', borderRadius: '8px', border: '1px solid #eee', display: 'flex', flexDirection: 'column' }}>
+                                    <div style={{ fontSize: '13px', fontWeight: 'bold', color: '#555', marginBottom: '10px', borderBottom: '1px solid #eee', paddingBottom: '8px' }}>Payout Calculation</div>
+                                    
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', marginBottom: '8px', color: '#333' }}>
+                                        <span>Gross Sales</span>
+                                        <span>₹{grossAmount.toFixed(2)}</span>
+                                    </div>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', marginBottom: '8px', color: '#dc3545' }}>
+                                        {/* 🔥 Displaying the exact dynamic percentage */}
+                                        <span>Platform Fee ({(sellerCommissionRate * 100).toFixed(0)}%)</span>
+                                        <span>- ₹{commissionAmount.toFixed(2)}</span>
+                                    </div>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', marginBottom: '8px', color: '#dc3545' }}>
+                                        <span title="Tax Collected at Source">TCS (GST 1%)</span>
+                                        <span>- ₹{tcsAmount.toFixed(2)}</span>
+                                    </div>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', marginBottom: '12px', color: '#dc3545', borderBottom: '1px dashed #ddd', paddingBottom: '12px' }}>
+                                        <span title="Tax Deducted at Source (Sec 194-O)">TDS (Income Tax 1%)</span>
+                                        <span>- ₹{tdsAmount.toFixed(2)}</span>
+                                    </div>
+                                    
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+                                        <span style={{ fontSize: '14px', fontWeight: 'bold', color: '#888' }}>Net Payable</span>
+                                        <span style={{ fontSize: '24px', fontWeight: 'bold', color: '#28a745' }}>
+                                            ₹{netPayout.toFixed(2)}
+                                        </span>
+                                    </div>
+
+                                    <button 
+                                        onClick={() => handleMarkAsPaid(s.SellerId, s.StoreName, netPayout.toFixed(2))}
+                                        disabled={processingId === s.SellerId || !s.BankAccount}
+                                        style={{ 
+                                            width: '100%', padding: '12px 20px', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: processingId === s.SellerId || !s.BankAccount ? 'not-allowed' : 'pointer', transition: 'background 0.2s', marginTop: 'auto',
+                                            background: processingId === s.SellerId ? '#6c757d' : (!s.BankAccount ? '#e0e0e0' : '#007bff'),
+                                            color: !s.BankAccount ? '#888' : 'white'
+                                        }}
+                                    >
+                                        {processingId === s.SellerId ? 'Processing...' : (!s.BankAccount ? 'Missing Bank Info' : '✓ Mark as Paid')}
+                                    </button>
+                                </div>
+
+                            </div>
+                        );
+                    })}
+                </div>
+            )}
         </div>
     );
 };

@@ -29,13 +29,15 @@ app.http('GetSellerProducts', {
                     }
 
                     const products = [];
-                    // 🔥 UPDATED: Added IsArchived and AdminMessage with correct commas
+                    // 🔥 UPDATED: Added GSTPercentage and HSNCode
                     const prodQuery = `
                         SELECT 
                             ProductId, Name, Price, Stock, ImageUrl, 
-                            Description, OriginalPrice, Category, Brand, Weight, SKU, IsActive, IsArchived, AdminMessage 
+                            Description, OriginalPrice, Category, Brand, Weight, SKU, IsActive, IsArchived, AdminMessage,
+                            GSTPercentage, HSNCode
                         FROM Products 
                         WHERE SellerId = ${foundSellerId}
+                        ORDER BY ProductId DESC
                     `;
                     
                     const reqProd = new Request(prodQuery, (err) => {
@@ -58,8 +60,11 @@ app.http('GetSellerProducts', {
                             weight: columns[9].value,
                             sku: columns[10].value,
                             isActive: columns[11].value,
-                            isArchived: columns[12].value,   // 🔥 Mapped
-                            adminMessage: columns[13].value // 🔥 Mapped
+                            isArchived: columns[12].value,   
+                            adminMessage: columns[13].value, 
+                            // 🔥 NEW: Map tax columns to frontend variables
+                            gstPercentage: columns[14].value,
+                            hsnCode: columns[15].value
                         });
                     });
 

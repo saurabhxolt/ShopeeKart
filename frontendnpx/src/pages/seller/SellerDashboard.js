@@ -5,10 +5,9 @@ import Modal from '../../components/common/Modal';
 import SellerOrdersModal from '../../components/orders/SellerOrdersModal';
 import SellerProfileModal from '../../components/profile/SellerProfileModal';
 
-// 🔥 IMPORT YOUR NEW SPLIT COMPONENTS
 import SellerAnalyticsView from './SellerAnalyticsView';
 import SellerInventoryView from './SellerInventoryView';
-import SellerSubscriptionView from './SellerSubscriptionView'; // 🔥 NEW IMPORT
+import SellerSubscriptionView from './SellerSubscriptionView'; 
 
 const SellerDashboard = ({ user }) => {
   const [sellerProducts, setSellerProducts] = useState([]);
@@ -17,7 +16,6 @@ const SellerDashboard = ({ user }) => {
   const [isOrdersModalOpen, setIsOrdersModalOpen] = useState(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
 
-  // 🔥 NEW NAVIGATION: Toggle between Inventory, Analytics, and Subscription
   const [viewMode, setViewMode] = useState('inventory'); 
 
   const [searchTerm, setSearchTerm] = useState('');
@@ -31,15 +29,12 @@ const SellerDashboard = ({ user }) => {
       deliveredOrders: 0 
   });
 
-  // 🔥 UPDATED ANALYTICS STATE: Added sorting and day filters
   const [trafficData, setTrafficData] = useState({ summary: {}, productStats: [] });
   const [isTrafficLoading, setIsTrafficLoading] = useState(true);
   const [analyticsDays, setAnalyticsDays] = useState(30); 
   const [analyticsSort, setAnalyticsSort] = useState('desc');
 
   const [toast, setToast] = useState({ visible: false, message: '', type: 'success' });
-
-  // 🔥 ADDED: Viewport detection for mobile responsiveness
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
 
   useEffect(() => {
@@ -81,8 +76,6 @@ const SellerDashboard = ({ user }) => {
     }
   };
 
-  // 🔥 UPDATED: Dynamic fetch based on days selected
-  // 🔥 UPDATED: Now fetches fresh data the moment you click "View Insights"
   useEffect(() => {
     const fetchTraffic = async () => {
         if (!user.userId) return;
@@ -97,12 +90,9 @@ const SellerDashboard = ({ user }) => {
         }
     };
 
-    // 🔥 ONLY fetch if the seller is currently looking at the analytics page
     if (viewMode === 'analytics') {
         fetchTraffic();
     }
-    
-  // Notice we added 'viewMode' to this array so React knows to trigger this when the view changes
   }, [user.userId, analyticsDays, viewMode]);
 
   useEffect(() => {
@@ -110,12 +100,19 @@ const SellerDashboard = ({ user }) => {
   }, [user.userId]);
 
   const handleUpdateProduct = async () => {
-    const { id, name, price, qty, imageUrl, description, originalPrice, category, brand, weight, sku, isActive } = editingProduct;
+    // 🔥 NEW: Extract gstPercentage and hsnCode from the editingProduct state
+    const { 
+        id, name, price, qty, imageUrl, description, originalPrice, 
+        category, brand, weight, sku, isActive, gstPercentage, hsnCode 
+    } = editingProduct;
+    
     if (!name || !price || qty === undefined) return showToast("Core fields are required", "error");
 
     try {
       await axios.post('http://localhost:7071/api/UpdateProduct', {
-        productId: id, name, price, stock: qty, imageUrl, description, originalPrice, category, brand, weight, sku, isActive
+        productId: id, name, price, stock: qty, imageUrl, description, 
+        originalPrice, category, brand, weight, sku, isActive,
+        gstPercentage, hsnCode // 🔥 NEW: Send them to the backend API
       });
       showToast("Product Updated Successfully!", "success");
       setEditingProduct(null); 
@@ -134,18 +131,9 @@ const SellerDashboard = ({ user }) => {
     
     try {
       await axios.post('http://localhost:7071/api/UpdateProduct', {
-        productId: product.id, 
-        name: product.name, 
-        price: product.price, 
-        stock: product.qty, 
-        imageUrl: product.imageUrl, 
-        description: product.description, 
-        originalPrice: product.originalPrice, 
-        category: product.category, 
-        brand: product.brand, 
-        weight: product.weight, 
-        sku: product.sku, 
-        isActive: newStatus 
+        productId: product.id, name: product.name, price: product.price, stock: product.qty, imageUrl: product.imageUrl, 
+        description: product.description, originalPrice: product.originalPrice, category: product.category, brand: product.brand, 
+        weight: product.weight, sku: product.sku, isActive: newStatus 
       });
       loadDashboardData(); 
       showToast(newStatus ? "Product is now Live" : "Product hidden (Draft mode)", "success");
@@ -176,9 +164,17 @@ const SellerDashboard = ({ user }) => {
     const sku = document.getElementById('pSku').value;
     const description = document.getElementById('pDesc').value;
     const fileInput = document.getElementById('pImageInput');
+    
+    // 🔥 TAX EXTRACTION
+    const gstPercentage = document.getElementById('pGst').value;
+    const hsnCode = document.getElementById('pHsn').value;
+    const gstConfirm = document.getElementById('pGstConfirm').checked;
 
     if (!name || !price || !stock) return showToast("Please fill all required text fields (*)", "error");
     
+    // 🔥 TAX VALIDATION: Block submission if they refuse to accept legal liability
+    if (!gstConfirm) return showToast("You must confirm your GST & HSN liability.", "error");
+
     let processedImages = [];
     if (fileInput.files.length > 0) {
         try {
@@ -195,17 +191,22 @@ const SellerDashboard = ({ user }) => {
         await axios.post('http://localhost:7071/api/AddProduct', { 
             userId: user.userId, name, price, stock, description, originalPrice: origPrice, 
             category, brand, weight, sku, images: processedImages, 
-            isActive: user.isApproved ? true : false 
+            isActive: user.isApproved ? true : false,
+            // 🔥 SEND TAXES TO BACKEND
+            gstPercentage, hsnCode 
         });
         
         showToast(user.isApproved ? "Product Added Successfully!" : "Product Saved as Draft (Pending Approval)", "success");
         setIsAddModalOpen(false); 
         loadDashboardData();
         
-        ["pName", "pPrice", "pOrigPrice", "pStock", "pBrand", "pCat", "pWeight", "pSku", "pDesc"].forEach(id => {
+        // Clear all inputs
+        ["pName", "pPrice", "pOrigPrice", "pStock", "pBrand", "pCat", "pWeight", "pSku", "pDesc", "pHsn"].forEach(id => {
             const el = document.getElementById(id);
             if(el) el.value = "";
         });
+        document.getElementById('pGst').value = "0.18"; // Reset to standard default
+        document.getElementById('pGstConfirm').checked = false;
         if(fileInput) fileInput.value = ""; 
     } catch (err) { 
         showToast("Upload Failed: " + (err.response?.data?.error || err.message), "error"); 
@@ -232,7 +233,6 @@ const SellerDashboard = ({ user }) => {
   return (
     <div style={{ position: 'relative', minHeight: '100vh', paddingBottom: '50px', width: '100%', boxSizing: 'border-box', overflowX: 'hidden', padding: isMobile ? '10px' : '20px' }}>
       
-      {/* Pending Approval Banner */}
       {!user.isApproved && (
         <div style={{
             background: '#fff3cd', color: '#856404', padding: '15px 20px', borderRadius: '8px', border: '1px solid #ffeeba', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '15px', boxShadow: '0 2px 4px rgba(0,0,0,0.05)', fontWeight: '500', width: '100%', boxSizing: 'border-box'
@@ -259,7 +259,6 @@ const SellerDashboard = ({ user }) => {
           </h2>
           
           <div style={{ display: 'flex', gap: '10px', flexDirection: isMobile ? 'column' : 'row' }}>
-            {/* 🔥 Updated Toggle button group for all 3 views */}
             <div style={{ display: 'flex', background: '#eee', padding: '4px', borderRadius: '8px', gap: '4px' }}>
                 <button onClick={() => setViewMode('inventory')} style={{ border: 'none', padding: '8px 12px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px', background: viewMode === 'inventory' ? 'white' : 'transparent', color: viewMode === 'inventory' ? '#2874f0' : '#666', boxShadow: viewMode === 'inventory' ? '0 2px 4px rgba(0,0,0,0.1)' : 'none' }}>📦 Products</button>
                 <button onClick={() => setViewMode('analytics')} style={{ border: 'none', padding: '8px 12px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px', background: viewMode === 'analytics' ? 'white' : 'transparent', color: viewMode === 'analytics' ? '#2874f0' : '#666', boxShadow: viewMode === 'analytics' ? '0 2px 4px rgba(0,0,0,0.1)' : 'none' }}>📈 Insights</button>
@@ -278,7 +277,6 @@ const SellerDashboard = ({ user }) => {
           </div>
       </div>
 
-      {/* 🔥 SWITCH CONTENT BASED ON VIEWMODE */}
       {viewMode === 'analytics' ? (
           <SellerAnalyticsView 
               isMobile={isMobile} trafficData={trafficData} isTrafficLoading={isTrafficLoading}
@@ -313,10 +311,10 @@ const SellerDashboard = ({ user }) => {
               <label style={{ fontSize: '13px', fontWeight: 'bold', color: '#555' }}>Product Name *</label>
               <input placeholder="Ex: Premium Silk Saree" id="pName" style={{ display: 'block', marginBottom: 15, width: '100%', padding: '10px', boxSizing: 'border-box', borderRadius: '4px', border: '1px solid #ccc' }} />
               
-              <label style={{ fontSize: '13px', fontWeight: 'bold', color: '#555' }}>Price *</label>
+              <label style={{ fontSize: '13px', fontWeight: 'bold', color: '#555' }}>Price (Final MRP incl. GST) *</label>
               <input placeholder="Current Price" type="number" id="pPrice" style={{ display: 'block', marginBottom: 15, width: '100%', padding: '10px', boxSizing: 'border-box', borderRadius: '4px', border: '1px solid #ccc' }} />
               
-              <label style={{ fontSize: '13px', fontWeight: 'bold', color: '#555' }}>Original Price (MRP)</label>
+              <label style={{ fontSize: '13px', fontWeight: 'bold', color: '#555' }}>Original Price (Before Discount)</label>
               <input placeholder="For showing discounts" type="number" id="pOrigPrice" style={{ display: 'block', marginBottom: 15, width: '100%', padding: '10px', boxSizing: 'border-box', borderRadius: '4px', border: '1px solid #ccc' }} />
               
               <label style={{ fontSize: '13px', fontWeight: 'bold', color: '#555' }}>Stock *</label>
@@ -336,6 +334,32 @@ const SellerDashboard = ({ user }) => {
               <input placeholder="Ex: SAR-BLU-001" id="pSku" style={{ display: 'block', marginBottom: 15, width: '100%', padding: '10px', boxSizing: 'border-box', borderRadius: '4px', border: '1px solid #ccc' }} />
           </div>
         </div>
+
+        {/* 🔥 NEW TAX SECTION */}
+        <div style={{ background: '#f8f9fa', padding: '15px', borderRadius: '8px', border: '1px solid #e2e8f0', marginBottom: '15px', marginTop: '10px' }}>
+            <h4 style={{ margin: '0 0 15px 0', color: '#333' }}>Tax Information (Mandatory)</h4>
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '15px' }}>
+                <div>
+                    <label style={{ fontSize: '13px', fontWeight: 'bold', color: '#555' }}>GST Bracket *</label>
+                    <select id="pGst" defaultValue="0.18" style={{ display: 'block', width: '100%', padding: '10px', boxSizing: 'border-box', borderRadius: '4px', border: '1px solid #ccc', backgroundColor: 'white' }}>
+                        <option value="0.28">28% (Luxury Goods, ACs)</option>
+                        <option value="0.18">18% (Standard Electronics, Goods)</option>
+                        <option value="0.12">12% (Apparel over ₹1000, Phones)</option>
+                        <option value="0.05">5% (Apparel under ₹1000, Spices)</option>
+                        <option value="0.00">0% (Books, Unpackaged Food)</option>
+                    </select>
+                </div>
+                <div>
+                    <label style={{ fontSize: '13px', fontWeight: 'bold', color: '#555' }}>HSN Code *</label>
+                    <input id="pHsn" placeholder="Ex: 8517" style={{ display: 'block', width: '100%', padding: '10px', boxSizing: 'border-box', borderRadius: '4px', border: '1px solid #ccc' }} />
+                </div>
+            </div>
+            <label style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', marginTop: '15px', fontSize: '12px', color: '#555', cursor: 'pointer' }}>
+                <input type="checkbox" id="pGstConfirm" style={{ marginTop: '2px', width: '16px', height: '16px' }} />
+                <span style={{ lineHeight: '1.4' }}>☑️ I confirm that the HSN code and GST percentage selected are legally accurate. I understand that I am solely responsible for any tax penalties arising from incorrect classification.</span>
+            </label>
+        </div>
+
         <label style={{ fontWeight: 'bold', display: 'block', marginTop: 10, fontSize: '13px', color: '#555' }}>Description</label>
         <textarea id="pDesc" placeholder="Describe your product details, fabric, and care instructions..." style={{ display: 'block', marginBottom: 15, width: '100%', height: '80px', padding: '10px', boxSizing: 'border-box', borderRadius: '4px', border: '1px solid #ccc', fontFamily: 'inherit' }} />
         

@@ -28,12 +28,12 @@ const CheckoutModal = ({ isOpen, onClose, cartItems = [], cartTotal, onConfirmOr
     const [isFetchingPin, setIsFetchingPin] = useState(false);
     
     const [orderId, setOrderId] = useState(null);
+    const [transactionId, setTransactionId] = useState(null);
     const [error, setError] = useState('');
 
     const [ratings, setRatings] = useState({});
     const [hoveredStar, setHoveredStar] = useState({});
 
-    // 🔥 ADDED: Viewport detection for mobile responsiveness
     const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
 
     useEffect(() => {
@@ -53,14 +53,15 @@ const CheckoutModal = ({ isOpen, onClose, cartItems = [], cartTotal, onConfirmOr
             setFormData({ fullName: '', phone: '', addressLine: '', pincode: '', city: '', district: '', state: '' });
             setPaymentMethod('COD'); 
             setOrderId(null);
+            setTransactionId(null); 
             setError('');
             setIsPlacingOrder(false);
             setIsFetchingPin(false);
-            setSelectedAddressId('NEW'); // Reset selection
+            setSelectedAddressId('NEW');
             
-            // Initialize all cart items to a default 5-star rating
+            // 🔥 FIX: Initialize all items to 0 stars instead of 5
             const initRatings = {};
-            cartItems.forEach(item => initRatings[item.id] = 5);
+            cartItems.forEach(item => initRatings[item.id] = 0);
             setRatings(initRatings);
 
             if (userId) fetchAddresses();
@@ -73,7 +74,7 @@ const CheckoutModal = ({ isOpen, onClose, cartItems = [], cartTotal, onConfirmOr
             const res = await axios.get(`http://localhost:7071/api/GetAddresses?userId=${userId}`);
             setSavedAddresses(res.data);
             if (res.data.length > 0) {
-                setSelectedAddressId(res.data[0].AddressId); // Auto-select the first saved address
+                setSelectedAddressId(res.data[0].AddressId);
             }
         } catch (err) {
             console.error("Failed to fetch addresses", err);
@@ -140,7 +141,6 @@ const CheckoutModal = ({ isOpen, onClose, cartItems = [], cartTotal, onConfirmOr
             }
             formattedAddress = `${formData.fullName} | Ph: +91 ${formData.phone}\n${formData.addressLine}\n${formData.city}, Dist: ${formData.district}, ${formData.state} - ${formData.pincode}\nPayment: ${paymentMethod}`;
         } else {
-            // 🔥 FIX 1: Safe string comparison ensures the address matches exactly, bringing back the preview box!
             const addr = savedAddresses.find(a => String(a.AddressId) === String(selectedAddressId));
             if (!addr) return setError("Please select a valid address.");
             formattedAddress = `${addr.FullName} | Ph: +91 ${addr.Phone}\n${addr.AddressLine}\n${addr.City}, Dist: ${addr.District}, ${addr.State} - ${addr.Pincode}\nPayment: ${paymentMethod}`;
@@ -150,8 +150,14 @@ const CheckoutModal = ({ isOpen, onClose, cartItems = [], cartTotal, onConfirmOr
         setIsPlacingOrder(true);
 
         try {
-            const newOrderId = await onConfirmOrder(formattedAddress, ratings);
-            setOrderId(newOrderId); 
+            const response = await onConfirmOrder(formattedAddress, ratings,paymentMethod);
+            
+            if (response && response.orderId) {
+                setOrderId(response.orderId);
+                setTransactionId(response.transactionId);
+            } else {
+                setOrderId(response);
+            }
         } catch (err) {
             setError(err.message || "Failed to place order. Please try again.");
         } finally {
@@ -161,7 +167,6 @@ const CheckoutModal = ({ isOpen, onClose, cartItems = [], cartTotal, onConfirmOr
 
     return (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex', justifyContent: 'center', alignItems: isMobile ? 'flex-end' : 'center', zIndex: 1300, padding: isMobile ? '0' : '20px' }}>
-            {/* 🔥 FIX 2: Layout explicitly isolates scroll area, locking the Pay button to the bottom on mobile */}
             <div style={{ backgroundColor: 'white', borderRadius: isMobile ? '16px 16px 0 0' : '12px', width: '100%', maxWidth: '1000px', maxHeight: isMobile ? '95vh' : '90vh', overflow: 'hidden', display: 'flex', flexDirection: 'column', position: 'relative', boxShadow: '0 -10px 40px rgba(0,0,0,0.2)' }}>
                 
                 {/* Header */}
@@ -180,9 +185,16 @@ const CheckoutModal = ({ isOpen, onClose, cartItems = [], cartTotal, onConfirmOr
                         <p style={{ color: '#555', fontSize: '15px', marginBottom: '5px' }}>Your order has been successfully placed.</p>
                         <p style={{ color: '#888', fontSize: '13px', marginBottom: '25px' }}>Your ratings have been saved.</p>
                         
-                        <div style={{ background: '#f8f9fa', border: '2px dashed #28a745', padding: '20px', borderRadius: '8px', display: 'inline-block', marginBottom: '15px', minWidth: '250px', width: isMobile ? '100%' : 'auto', boxSizing: 'border-box' }}>
-                            <span style={{ display: 'block', fontSize: '12px', color: '#666', textTransform: 'uppercase', letterSpacing: '1px' }}>Tracking ID</span>
-                            <strong style={{ fontSize: '28px', color: '#333' }}>#{orderId}</strong>
+                        <div style={{ background: '#f8f9fa', border: '2px dashed #28a745', padding: '20px', borderRadius: '8px', display: 'inline-block', marginBottom: '15px', minWidth: '280px', width: isMobile ? '100%' : 'auto', boxSizing: 'border-box' }}>
+                            <span style={{ display: 'block', fontSize: '12px', color: '#666', textTransform: 'uppercase', letterSpacing: '1px' }}>Order ID</span>
+                            <strong style={{ fontSize: '28px', color: '#333', display: 'block', marginBottom: transactionId ? '10px' : '0' }}>#{orderId}</strong>
+                            
+                            {transactionId && (
+                                <div style={{ borderTop: '1px solid #e0e0e0', paddingTop: '10px', marginTop: '10px' }}>
+                                    <span style={{ display: 'block', fontSize: '12px', color: '#666', textTransform: 'uppercase', letterSpacing: '1px' }}>Transaction ID</span>
+                                    <strong style={{ fontSize: '16px', color: '#007bff' }}>{transactionId}</strong>
+                                </div>
+                            )}
                         </div>
 
                         <div style={{ background: '#e8f5e9', color: '#155724', padding: '12px', borderRadius: '8px', display: 'inline-block', marginBottom: '30px', border: '1px solid #c3e6cb', width: isMobile ? '100%' : 'auto', boxSizing: 'border-box' }}>
@@ -201,7 +213,6 @@ const CheckoutModal = ({ isOpen, onClose, cartItems = [], cartTotal, onConfirmOr
                     </div>
                 ) : (
                     <>
-                        {/* 🔥 FIX 3: Scrollable body ensuring form is always above order summary */}
                         <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: isMobile ? 'column' : 'row', overflowX: 'hidden' }}>
                             
                             {/* LEFT COLUMN: FORM */}
@@ -235,7 +246,6 @@ const CheckoutModal = ({ isOpen, onClose, cartItems = [], cartTotal, onConfirmOr
                                         {selectedAddressId !== 'NEW' && savedAddresses.length > 0 && (
                                             <div style={{ padding: '15px', background: '#f0f5ff', border: '1px solid #2874f0', borderRadius: '6px', transition: 'all 0.2s ease' }}>
                                                 {(() => {
-                                                    // Safely compare using String to ensure match works
                                                     const addr = savedAddresses.find(a => String(a.AddressId) === String(selectedAddressId));
                                                     if(!addr) return null;
                                                     return (
@@ -332,7 +342,18 @@ const CheckoutModal = ({ isOpen, onClose, cartItems = [], cartTotal, onConfirmOr
                                             </div>
                                             
                                             <div style={{ borderTop: '1px dashed #eee', paddingTop: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                <span style={{ fontSize: '12px', color: '#666', fontWeight: 'bold' }}>Rate Item:</span>
+                                                <span style={{ fontSize: '12px', color: '#666', fontWeight: 'bold', display: 'flex', alignItems: 'center' }}>
+                                                    Rate Item:
+                                                    {/* 🔥 FIX: Render the visual nudge if the rating is currently 0 */}
+                                                    {(!ratings[item.id] || ratings[item.id] === 0) && (
+                                                        <span style={{ color: '#fb641b', fontSize: '11px', marginLeft: '6px', background: '#fff5ec', padding: '2px 6px', borderRadius: '4px', border: '1px solid #fbdcce' }}>
+                                                            ✨ Tap to rate
+                                                        </span>
+                                                    )}
+                                                    {ratings[item.id] > 0 && (
+                                                        <span style={{ color: '#28a745', fontSize: '11px', marginLeft: '6px' }}>✓ Rated</span>
+                                                    )}
+                                                </span>
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                                                     {[1, 2, 3, 4, 5].map(star => (
                                                         <span 
@@ -368,7 +389,6 @@ const CheckoutModal = ({ isOpen, onClose, cartItems = [], cartTotal, onConfirmOr
                                     <span style={{ fontSize: '24px', fontWeight: 'bold', color: '#007bff' }}>Rs. {cartTotal}</span>
                                 </div>
 
-                                {/* Desktop Pay Button (Hidden on Mobile) */}
                                 {!isMobile && (
                                     <button 
                                         onClick={handleSubmit} 
@@ -381,7 +401,6 @@ const CheckoutModal = ({ isOpen, onClose, cartItems = [], cartTotal, onConfirmOr
                             </div>
                         </div>
 
-                        {/* 🔥 FIX 4: Dedicated Mobile Sticky Footer - Always visible at the bottom of the screen! */}
                         {isMobile && (
                             <div style={{ flexShrink: 0, padding: '15px', background: 'white', borderTop: '1px solid #e0e0e0', boxShadow: '0 -4px 10px rgba(0,0,0,0.05)' }}>
                                 <button 

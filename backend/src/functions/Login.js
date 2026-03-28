@@ -12,7 +12,7 @@ app.http('Login', {
             // 1. Connect to Database
             await sql.connect(process.env.SQL_CONNECTION);
             
-            // 2. Query User (Checking Role, Ban Status, and Soft Delete)
+            // 2. Query User (Checking Role, Ban Status, Soft Delete, and Plan)
             const result = await sql.query`
                 SELECT 
                     u.UserId, 
@@ -22,7 +22,9 @@ app.http('Login', {
                     u.Phone,
                     u.PasswordHash, 
                     u.IsBanned, 
-                    s.IsApproved
+                    s.IsApproved,
+                    s.SubscriptionPlan, -- 🔥 NEW: Fetch the plan name
+                    s.CommissionRate    -- 🔥 NEW: Fetch the exact commission
                 FROM Users u
                 LEFT JOIN Sellers s ON u.UserId = s.UserId
                 WHERE u.Email = ${email} 
@@ -37,13 +39,9 @@ app.http('Login', {
             }
 
             // 4. Security Checks
-            // Check if Banned - We still block banned users entirely
             if (user.IsBanned) {
                 return { status: 403, body: "🚫 Your account has been banned. Contact Admin." };
             }
-
-            // 🔥 UPDATED: Removed the block for Unapproved Sellers. 
-            // We now allow them to login so they can modify their details.
 
             // 5. Verify Password
             const isMatch = await bcrypt.compare(password, user.PasswordHash);
@@ -61,8 +59,10 @@ app.http('Login', {
                     name: user.FullName,
                     email: user.Email,
                     phone: user.Phone,
-                    // 🔥 Pass the approval status to the frontend so we can show a warning bar
                     isApproved: user.IsApproved === 1 || user.IsApproved === true,
+                    // 🔥 Pass the plan and rate to the frontend (with defaults if NULL)
+                    plan: user.SubscriptionPlan || 'Starter', 
+                    commissionRate: user.CommissionRate || 0.10,
                     token: "dummy-jwt-token" 
                 }
             };

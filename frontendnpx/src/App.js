@@ -121,7 +121,7 @@ function App() {
             setIsSearching(true);
             try {
                 const res = await axios.get(`http://localhost:7071/api/GlobalSearch?q=${globalSearch}`);
-                setSearchResults(res.data);
+                searchResults(res.data);
             } catch (err) {
                 console.error("Global search failed", err);
             } finally {
@@ -211,7 +211,7 @@ function App() {
     }
   };
 
-  const handlePlaceOrder = async (address, ratings) => {
+  const handlePlaceOrder = async (address, ratings, paymentMethod) => {
       setIsVerifyingStock(true); 
       try {
           const res = await axios.post('http://localhost:7071/api/PlaceOrder', {
@@ -219,7 +219,8 @@ function App() {
               address, 
               cartItems: checkoutSession.items, 
               totalAmount: checkoutSession.items.reduce((sum, item) => sum + (Number(item.price) * (item.qty || 1)), 0),
-              isBuyNow: checkoutSession.isBuyNow 
+              isBuyNow: checkoutSession.isBuyNow,
+              paymentMethod: paymentMethod 
           });
           
           if (res.status === 200) {
@@ -232,7 +233,12 @@ function App() {
               }
               if (!checkoutSession.isBuyNow) setCartItems([]);
               setRefreshKey(prev => prev + 1); 
-              return res.data.orderId; 
+              
+              // 🔥 FIX: Returning BOTH IDs in an object
+              return {
+                  orderId: res.data.orderId,
+                  transactionId: res.data.transactionId
+              }; 
           }
       } catch (err) {
           throw new Error(err.response?.data || err.message);

@@ -13,10 +13,10 @@ const BuyerOrdersModal = ({ isOpen, onClose, userId }) => {
     const [hoveredStar, setHoveredStar] = useState(0);
     const [submittedRatings, setSubmittedRatings] = useState({});
 
-    // 🔥 NEW: State for sorting/filtering by Date
+    // State for sorting/filtering by Date
     const [timeFilter, setTimeFilter] = useState('ALL');
 
-    // 🔥 ADDED: Viewport detection for mobile responsiveness
+    // Viewport detection for mobile responsiveness
     const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
 
     useEffect(() => {
@@ -43,7 +43,7 @@ const BuyerOrdersModal = ({ isOpen, onClose, userId }) => {
             fetchOrders();
             setSelectedOrder(null);
             setSelectedItem(null);
-            setTimeFilter('ALL'); // Reset filter when opened
+            setTimeFilter('ALL'); 
         }
     }, [isOpen, fetchOrders]);
 
@@ -80,16 +80,14 @@ const BuyerOrdersModal = ({ isOpen, onClose, userId }) => {
     const availableYears = [...new Set(orders.map(o => new Date(o.OrderDate).getFullYear()))].sort((a,b) => b - a);
 
     // ============================================================================
-    // VIEW 1: LIST VIEW (With Month/Year Sorting)
+    // VIEW 1: LIST VIEW 
     // ============================================================================
     const renderListView = () => {
-        // Flatten orders so each product is its own row
         const flattenedItems = orders.flatMap(o => {
             const items = o.ItemsJson ? JSON.parse(o.ItemsJson) : [];
             return items.map(item => ({ item, order: o }));
         });
 
-        // Apply Time Filter
         const filteredItems = flattenedItems.filter(data => {
             if (timeFilter === 'ALL') return true;
             
@@ -101,7 +99,6 @@ const BuyerOrdersModal = ({ isOpen, onClose, userId }) => {
             if (timeFilter === '30DAYS') return diffDays <= 30;
             if (timeFilter === '6MONTHS') return diffDays <= 180;
             
-            // If it's a specific year (e.g. "2026")
             return orderDate.getFullYear().toString() === timeFilter;
         });
 
@@ -116,7 +113,6 @@ const BuyerOrdersModal = ({ isOpen, onClose, userId }) => {
 
         return (
             <div style={{ padding: isMobile ? '5px' : '10px', width: '100%', boxSizing: 'border-box', overflowX: 'hidden' }}>
-                {/* SORTING / FILTERING HEADER */}
                 <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', justifyContent: 'space-between', alignItems: isMobile ? 'flex-start' : 'center', marginBottom: '15px', background: 'white', padding: '15px', borderRadius: '4px', border: '1px solid #e0e0e0', width: '100%', boxSizing: 'border-box', gap: isMobile ? '10px' : '0' }}>
                     <h3 style={{ margin: 0, fontSize: '18px', color: '#212121', display: 'flex', alignItems: 'center', gap: '8px' }}>
                         📦 My Orders
@@ -150,7 +146,11 @@ const BuyerOrdersModal = ({ isOpen, onClose, userId }) => {
                         const isDelivered = order.Status === 'Delivered';
                         const isCancelled = order.Status === 'Cancelled';
                         const statusColor = isDelivered ? '#26a541' : (isCancelled ? '#ff6161' : '#2874f0');
-                        const itemId = item.id || item.ProductId;
+                        
+                        // 🔥 Format the Order ID dynamically
+                        const rawStoreName = order.StoreName || item.StoreName || "STORE";
+                        const storePrefix = rawStoreName.replace(/[^a-zA-Z0-9]/g, '').toUpperCase().substring(0, 4);
+                        const displayOrderId = `${storePrefix}-${order.OrderId}`;
 
                         return (
                             <div 
@@ -168,6 +168,7 @@ const BuyerOrdersModal = ({ isOpen, onClose, userId }) => {
                                     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
                                         <div style={{ fontSize: '14px', fontWeight: '500', color: '#212121', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'normal', wordBreak: 'break-word' }}>{item.Name || item.name}</div>
                                         <div style={{ fontSize: '12px', color: '#878787', marginTop: '4px' }}>Qty: {item.Qty || item.qty}</div>
+                                        <div style={{ fontSize: '11px', color: '#878787', marginTop: '4px', fontWeight: 'bold' }}>ID: #{displayOrderId}</div>
                                     </div>
                                 </div>
                                 
@@ -181,7 +182,6 @@ const BuyerOrdersModal = ({ isOpen, onClose, userId }) => {
                                             <span style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: statusColor, flexShrink: 0 }}></span>
                                             {order.Status} <span style={{ display: isMobile ? 'none' : 'inline' }}>on {order.OrderDate ? new Date(order.OrderDate.replace('Z', '')).toLocaleString('en-IN', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }) : 'N/A'}</span>
                                         </div>
-                                        {/* Show date below on mobile for better fit */}
                                         {isMobile && <div style={{ fontSize: '11px', color: '#878787', marginTop: '2px' }}>{order.OrderDate ? new Date(order.OrderDate.replace('Z', '')).toLocaleDateString('en-IN', { month: 'short', day: 'numeric', year: 'numeric' }) : ''}</div>}
                                         
                                         {!isMobile && (
@@ -213,12 +213,15 @@ const BuyerOrdersModal = ({ isOpen, onClose, userId }) => {
         const item = selectedItem;
         
         const addressData = parseAddress(o.ShippingAddress || o.Address || o.DeliveryAddress);
-        
         const itemId = item.id || item.ProductId;
         const isDelivered = o.Status === 'Delivered';
         const isCancelled = o.Status === 'Cancelled';
 
-        // Fake Listing Price Calculation for UI realism (usually +20%)
+        // 🔥 Format the Order ID dynamically here as well
+        const rawStoreName = o.StoreName || item.StoreName || "STORE";
+        const storePrefix = rawStoreName.replace(/[^a-zA-Z0-9]/g, '').toUpperCase().substring(0, 4);
+        const displayOrderId = `${storePrefix}-${o.OrderId}`;
+
         const sellingPrice = item.Price || item.price;
         const listingPrice = item.OriginalPrice || Math.round(sellingPrice * 1.2);
         const discount = listingPrice - sellingPrice;
@@ -228,21 +231,23 @@ const BuyerOrdersModal = ({ isOpen, onClose, userId }) => {
 
         return (
             <div style={{ background: '#f1f3f6', padding: isMobile ? '10px' : '15px', minHeight: '60vh', margin: isMobile ? '0' : '-20px', borderRadius: '0 0 8px 8px', width: '100%', boxSizing: 'border-box' }}>
-                {/* Back Button */}
-                <div style={{ marginBottom: '15px', display: 'flex', flexDirection: isMobile ? 'column' : 'row', alignItems: isMobile ? 'flex-start' : 'center', gap: '10px', width: '100%' }}>
+                
+                {/* Back Button & HEADER (🔥 NOW SHOWS BOTH IDs) */}
+                <div style={{ marginBottom: '15px', display: 'flex', flexDirection: isMobile ? 'column' : 'row', alignItems: isMobile ? 'flex-start' : 'center', justifyContent: 'space-between', gap: '10px', width: '100%' }}>
                     <button onClick={() => { setSelectedOrder(null); setSelectedItem(null); }} style={{ background: 'white', border: '1px solid #ccc', padding: '6px 15px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', color: '#333', width: isMobile ? '100%' : 'auto' }}>
                         ← Back to My Orders
                     </button>
-                    <span style={{ fontSize: '12px', color: '#878787' }}>Order ID: #{o.OrderId}</span>
+                    
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: isMobile ? 'flex-start' : 'flex-end' }}>
+                        <span style={{ fontSize: '14px', fontWeight: 'bold', color: '#333' }}>Order ID: #{displayOrderId}</span>
+                        {o.TransactionId && <span style={{ fontSize: '12px', color: '#007bff', fontWeight: '500' }}>Trans ID: {o.TransactionId}</span>}
+                    </div>
                 </div>
 
-                {/* 🔥 GRID UPDATED: Swaps to 1 column on mobile */}
                 <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '2fr 1fr', gap: '15px', width: '100%', boxSizing: 'border-box' }}>
                     
                     {/* LEFT COLUMN */}
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', width: '100%', boxSizing: 'border-box', overflow: 'hidden' }}>
-                        
-                        {/* Packaging Info */}
                         <div style={{ background: 'white', padding: '15px', borderRadius: '4px', display: 'flex', alignItems: 'center', gap: '15px', border: '1px solid #e0e0e0', width: '100%', boxSizing: 'border-box' }}>
                             <div style={{ fontSize: '24px' }}>📦</div>
                             <div>
@@ -251,9 +256,7 @@ const BuyerOrdersModal = ({ isOpen, onClose, userId }) => {
                             </div>
                         </div>
 
-                        {/* Product & Timeline */}
                         <div style={{ background: 'white', padding: isMobile ? '15px' : '24px', borderRadius: '4px', border: '1px solid #e0e0e0', width: '100%', boxSizing: 'border-box' }}>
-                            {/* Product Header */}
                             <div style={{ display: 'flex', flexDirection: isMobile ? 'column-reverse' : 'row', justifyContent: 'space-between', borderBottom: '1px solid #f0f0f0', paddingBottom: '20px', marginBottom: '20px', gap: isMobile ? '15px' : '0' }}>
                                 <div>
                                     <div style={{ fontSize: '16px', fontWeight: '500', color: '#212121', marginBottom: '8px', wordBreak: 'break-word' }}>{item.Name || item.name}</div>
@@ -265,7 +268,6 @@ const BuyerOrdersModal = ({ isOpen, onClose, userId }) => {
                                 </div>
                             </div>
 
-                            {/* Vertical Timeline */}
                             <div style={{ margin: '10px 0 20px 10px' }}>
                                 {isCancelled ? (
                                     <div style={{ display: 'flex', gap: '20px', position: 'relative' }}>
@@ -281,11 +283,8 @@ const BuyerOrdersModal = ({ isOpen, onClose, userId }) => {
                                         const isLast = idx === timeline.length - 1;
                                         return (
                                             <div key={step} style={{ display: 'flex', gap: '20px', position: 'relative', paddingBottom: isLast ? '0' : '35px' }}>
-                                                {/* Connecting Line */}
                                                 {!isLast && <div style={{ position: 'absolute', left: '6px', top: '16px', bottom: '0', width: '2px', background: isCompleted && currentIndex > idx ? '#26a541' : '#e0e0e0' }}></div>}
-                                                {/* Dot */}
                                                 <div style={{ width: '14px', height: '14px', borderRadius: '50%', background: isCompleted ? '#26a541' : '#e0e0e0', zIndex: 1, marginTop: '2px', flexShrink: 0 }}></div>
-                                                {/* Text */}
                                                 <div style={{ marginTop: '-2px' }}>
                                                     <div style={{ fontWeight: '500', color: isCompleted ? '#212121' : '#878787', fontSize: '14px' }}>Order {step}</div>
                                                     {isCompleted && <div style={{ fontSize: '12px', color: '#878787', marginTop: '4px' }}>{o.OrderDate ? new Date(o.OrderDate.replace('Z', '')).toLocaleString('en-IN', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }) : 'N/A'}</div>}
@@ -297,7 +296,6 @@ const BuyerOrdersModal = ({ isOpen, onClose, userId }) => {
                             </div>
                         </div>
 
-                        {/* Rate Experience */}
                         {isDelivered && (
                             <div style={{ background: 'white', padding: isMobile ? '15px' : '24px', borderRadius: '4px', border: '1px solid #e0e0e0', width: '100%', boxSizing: 'border-box' }}>
                                 <h3 style={{ margin: '0 0 15px 0', fontSize: '16px', color: '#212121', fontWeight: '500' }}>Rate your experience</h3>
@@ -314,7 +312,6 @@ const BuyerOrdersModal = ({ isOpen, onClose, userId }) => {
                                                     fontSize: '32px', cursor: 'pointer', lineHeight: '1', transition: 'color 0.2s',
                                                     color: star <= (hoveredStar || submittedRatings[itemId] || 0) ? '#ff9f00' : '#e0e0e0'
                                                 }}
-                                                title={`Rate ${star} stars`}
                                             >
                                                 ★
                                             </span>
@@ -329,7 +326,6 @@ const BuyerOrdersModal = ({ isOpen, onClose, userId }) => {
                     {/* RIGHT COLUMN */}
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', width: '100%', boxSizing: 'border-box', overflow: 'hidden' }}>
                         
-                        {/* Delivery Address */}
                         <div style={{ background: 'white', padding: '20px', borderRadius: '4px', border: '1px solid #e0e0e0', width: '100%', boxSizing: 'border-box' }}>
                             <div style={{ fontSize: '15px', fontWeight: '500', color: '#212121', marginBottom: '15px' }}>Delivery details</div>
                             <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', marginBottom: '12px' }}>
@@ -345,7 +341,6 @@ const BuyerOrdersModal = ({ isOpen, onClose, userId }) => {
                             </div>
                         </div>
 
-                        {/* Price Details */}
                         <div style={{ background: 'white', padding: '20px', borderRadius: '4px', border: '1px solid #e0e0e0', width: '100%', boxSizing: 'border-box' }}>
                             <div style={{ fontSize: '15px', fontWeight: '500', color: '#212121', marginBottom: '15px', borderBottom: '1px solid #f0f0f0', paddingBottom: '12px' }}>Price details</div>
                             
@@ -371,9 +366,18 @@ const BuyerOrdersModal = ({ isOpen, onClose, userId }) => {
                                 <span>₹{sellingPrice * (item.Qty || item.qty || 1)}</span>
                             </div>
 
-                            <div style={{ background: '#f8f9fa', padding: '12px', borderRadius: '4px', fontSize: '13px', color: '#212121', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <span>Payment method</span>
-                                <strong>{addressData.payment}</strong>
+                            {/* 🔥 NEW: Added Transaction ID to the Payment Block */}
+                            <div style={{ background: '#f8f9fa', padding: '12px', borderRadius: '4px', fontSize: '13px', color: '#212121', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <span>Payment method</span>
+                                    <strong>{addressData.payment}</strong>
+                                </div>
+                                {o.TransactionId && (
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px dashed #ccc', paddingTop: '10px' }}>
+                                        <span>Transaction ID</span>
+                                        <strong style={{ color: '#007bff' }}>{o.TransactionId}</strong>
+                                    </div>
+                                )}
                             </div>
                         </div>
 
@@ -384,7 +388,6 @@ const BuyerOrdersModal = ({ isOpen, onClose, userId }) => {
     };
 
     return (
-        // 🔥 Make Modal width 100% on mobile so it doesn't push horizontally
         <Modal isOpen={isOpen} onClose={onClose} title={selectedOrder ? "Order Details" : ""} width={isMobile ? "100%" : (selectedOrder ? "1000px" : "800px")}>
             {selectedOrder ? renderDetailView() : (
                 <>

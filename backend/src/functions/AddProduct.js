@@ -15,10 +15,11 @@ app.http('AddProduct', {
         try {
             const { 
                 userId, name, price, stock, images, 
-                description, originalPrice, category, brand, weight, sku 
+                description, originalPrice, category, brand, weight, sku,
+                gstPercentage, hsnCode 
             } = await request.json();
 
-            // --- 1. AZURE BLOB STORAGE UPLOAD LOGIC ---
+            // --- 1. AZURE BLOB STORAGE LOGIC ---
             const connectionString = process.env.AzureWebJobsStorage;
             const blobServiceClient = BlobServiceClient.fromConnectionString(connectionString);
             const containerClient = blobServiceClient.getContainerClient("product-images");
@@ -72,11 +73,13 @@ app.http('AddProduct', {
                         const insertProduct = `
                             INSERT INTO Products (
                                 SellerId, Name, Price, Stock, ImageUrl, 
-                                Description, OriginalPrice, Category, Brand, Weight, SKU, IsActive
+                                Description, OriginalPrice, Category, Brand, Weight, SKU, IsActive,
+                                GSTPercentage, HSNCode
                             ) 
                             VALUES (
                                 @sid, @name, @price, @stock, @img, 
-                                @desc, @origPrice, @cat, @brand, @weight, @sku, 1
+                                @desc, @origPrice, @cat, @brand, @weight, @sku, 1,
+                                @gst, @hsn
                             )
                         `;
                         
@@ -88,15 +91,21 @@ app.http('AddProduct', {
 
                         reqInsert.addParameter('sid', TYPES.Int, sellerId);
                         reqInsert.addParameter('name', TYPES.VarChar, name);
-                        reqInsert.addParameter('price', TYPES.Decimal, price);
+                        
+                        // 🔥 FIX: ADDED PRECISION AND SCALE TO ALL DECIMAL FIELDS
+                        reqInsert.addParameter('price', TYPES.Decimal, price, { precision: 18, scale: 2 });
                         reqInsert.addParameter('stock', TYPES.Int, stock);
                         reqInsert.addParameter('img', TYPES.NVarChar, finalImageUrlString); 
                         reqInsert.addParameter('desc', TYPES.NVarChar, description || null);
-                        reqInsert.addParameter('origPrice', TYPES.Decimal, originalPrice || null);
+                        reqInsert.addParameter('origPrice', TYPES.Decimal, originalPrice || null, { precision: 18, scale: 2 });
                         reqInsert.addParameter('cat', TYPES.VarChar, category || null);
                         reqInsert.addParameter('brand', TYPES.VarChar, brand || null);
-                        reqInsert.addParameter('weight', TYPES.Decimal, weight || null);
+                        reqInsert.addParameter('weight', TYPES.Decimal, weight || null, { precision: 10, scale: 2 });
                         reqInsert.addParameter('sku', TYPES.VarChar, sku || null);
+                        
+                        // 🔥 FIX: Added precision/scale so 0.05 saves correctly instead of 0
+                        reqInsert.addParameter('gst', TYPES.Decimal, gstPercentage !== undefined ? parseFloat(gstPercentage) : 0.18, { precision: 4, scale: 2 });
+                        reqInsert.addParameter('hsn', TYPES.VarChar, hsnCode || null);
 
                         connection.execSql(reqInsert);
                     });
@@ -110,7 +119,6 @@ app.http('AddProduct', {
             });
 
         } catch (error) {
-            // 🔥 FIXED: Updated from context.log.error to context.error for Azure Functions v4
             context.error("Function Error:", error);
             return { status: 500, jsonBody: { error: "Server Error: " + error.message } };
         }

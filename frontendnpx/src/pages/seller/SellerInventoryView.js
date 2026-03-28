@@ -110,6 +110,30 @@ const SellerInventoryView = ({
                             
                             <textarea placeholder="Description" value={editingProduct.description || ''} onChange={(e) => setEditingProduct({...editingProduct, description: e.target.value})} style={{ padding: '6px', height: '60px', boxSizing: 'border-box', fontFamily: 'inherit', width: '100%' }} />
                             
+                            {/* 🔥 NEW TAX SECTION FOR EDIT MODE */}
+                            <div style={{ background: '#f8f9fa', padding: '8px', borderRadius: '6px', border: '1px solid #e2e8f0', marginTop: '5px' }}>
+                                <label style={{ fontSize: '11px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Tax Info (GST & HSN) *</label>
+                                <div style={{ display: 'flex', gap: '5px', width: '100%' }}>
+                                    <select 
+                                        value={editingProduct.gstPercentage !== undefined ? editingProduct.gstPercentage : "0.18"} 
+                                        onChange={(e) => setEditingProduct({...editingProduct, gstPercentage: e.target.value})} 
+                                        style={{ padding: '6px', flex: 1, boxSizing: 'border-box', minWidth: '0', fontSize: '11px', borderRadius: '4px', border: '1px solid #ccc' }}
+                                    >
+                                        <option value="0.28">28% GST</option>
+                                        <option value="0.18">18% GST</option>
+                                        <option value="0.12">12% GST</option>
+                                        <option value="0.05">5% GST</option>
+                                        <option value="0.00">0% GST</option>
+                                    </select>
+                                    <input 
+                                        placeholder="HSN Code" 
+                                        value={editingProduct.hsnCode || ''} 
+                                        onChange={(e) => setEditingProduct({...editingProduct, hsnCode: e.target.value})} 
+                                        style={{ padding: '6px', flex: 1, boxSizing: 'border-box', minWidth: '0', fontSize: '11px', borderRadius: '4px', border: '1px solid #ccc' }} 
+                                    />
+                                </div>
+                            </div>
+
                             <label style={{ fontSize: '11px', fontWeight: 'bold', marginTop: '5px' }}>Gallery (Click ✕ to remove):</label>
                             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px', marginBottom: '5px' }}>
                                 {parseImages(editingProduct.imageUrl).map((img, idx) => (
@@ -158,13 +182,17 @@ const SellerInventoryView = ({
 
                                 <p style={{ fontSize: '11px', color: '#555', marginBottom: '5px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>Stock: <strong style={{ color: p.qty <= 0 ? 'red' : 'inherit' }}>{p.qty}</strong> | SKU: {p.sku || 'N/A'}</p>
                                 
+                                {/* 🔥 NEW: Show active GST setting in view mode */}
+                                <p style={{ fontSize: '11px', color: '#856404', background: '#fff3cd', padding: '2px 6px', borderRadius: '4px', display: 'inline-block', width: 'fit-content', marginTop: '0', marginBottom: '5px' }}>
+                                    GST: {(p.gstPercentage * 100).toFixed(0)}% | HSN: {p.hsnCode || 'Pending'}
+                                </p>
+                                
                                 {!isMobile && (
                                   <div style={{ maxHeight: '75px', overflowY: 'auto', wordBreak: 'break-word', paddingRight: '5px', marginBottom: '10px', fontSize: '12px', color: '#555' }}>
                                       <ReadMore text={p.description} limit={60} />
                                   </div>
                                 )}
 
-                                {/* MODERATION ALERT BOX - ALWAYS SHOW IF ARCHIVED */}
                                 {p.isArchived && (
                                     <div style={{ padding: '8px', background: '#ffeeba', color: '#856404', borderRadius: '4px', fontSize: '11px', fontWeight: 'bold', border: '1px solid #ffe8a1', marginTop: '10px', marginBottom: '10px', lineHeight: '1.2' }}>
                                         ⚠️ Moderation Alert<br/>
