@@ -29,12 +29,12 @@ app.http('GetSellerProducts', {
                     }
 
                     const products = [];
-                    // 🔥 UPDATED: Added GSTPercentage and HSNCode
+                    // 🔥 UPDATED: Added IsDeleted to the end of the SELECT statement
                     const prodQuery = `
                         SELECT 
                             ProductId, Name, Price, Stock, ImageUrl, 
                             Description, OriginalPrice, Category, Brand, Weight, SKU, IsActive, IsArchived, AdminMessage,
-                            GSTPercentage, HSNCode
+                            GSTPercentage, HSNCode, IsDeleted
                         FROM Products 
                         WHERE SellerId = ${foundSellerId}
                         ORDER BY ProductId DESC
@@ -62,9 +62,10 @@ app.http('GetSellerProducts', {
                             isActive: columns[11].value,
                             isArchived: columns[12].value,   
                             adminMessage: columns[13].value, 
-                            // 🔥 NEW: Map tax columns to frontend variables
                             gstPercentage: columns[14].value,
-                            hsnCode: columns[15].value
+                            hsnCode: columns[15].value,
+                            // 🔥 NEW: Mapped the IsDeleted column to the frontend
+                            isDeleted: columns[16].value 
                         });
                     });
 

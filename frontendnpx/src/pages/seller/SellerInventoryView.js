@@ -7,7 +7,9 @@ const SellerInventoryView = ({
     isMobile, dashboardMetrics, outOfStockCount, trafficData, isTrafficLoading,
     setIsOrdersModalOpen, searchTerm, setSearchTerm, categoryFilter, setCategoryFilter,
     uniqueCategories, stockFilter, setStockFilter, filteredProducts, editingProduct,
-    setEditingProduct, handleUpdateProduct, handleToggleVisibility, handleDeleteProduct
+    setEditingProduct, handleUpdateProduct, handleToggleVisibility, handleDeleteProduct,
+    handleRestoreProduct, // 🔥 RESTORE PROP
+    archiveFilter, setArchiveFilter 
 }) => {
     return (
         <>
@@ -39,12 +41,18 @@ const SellerInventoryView = ({
 
             {/* Filters */}
             <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: '10px', marginBottom: '25px', background: 'white', padding: '15px', borderRadius: '8px', boxShadow: '0 2px 5px rgba(0,0,0,0.05)', border: '1px solid #eee', width: '100%', boxSizing: 'border-box' }}>
-                <input type="text" placeholder="🔍 Search by Name or SKU..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} style={{ flex: 2, padding: '10px', borderRadius: '6px', border: '1px solid #ccc', width: '100%', boxSizing: 'border-box' }} />
-                <div style={{ display: 'flex', gap: '10px', width: '100%' }}>
-                    <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)} style={{ flex: 1, padding: '10px', borderRadius: '6px', border: '1px solid #ccc', width: '50%' }}>
+                <input type="text" placeholder="🔍 Search by Name or SKU..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} style={{ flex: 1.5, padding: '10px', borderRadius: '6px', border: '1px solid #ccc', width: '100%', boxSizing: 'border-box' }} />
+                <div style={{ display: 'flex', gap: '10px', width: '100%', flex: 2 }}>
+                    
+                    <select value={archiveFilter} onChange={(e) => setArchiveFilter(e.target.value)} style={{ flex: 1, padding: '10px', borderRadius: '6px', border: '1px solid #ccc', width: '33%', fontWeight: 'bold', color: archiveFilter === 'ARCHIVED' ? '#dc3545' : '#333' }}>
+                        <option value="ACTIVE">✅ Active Listings</option>
+                        <option value="ARCHIVED">🗑️ Trash / Archived</option>
+                    </select>
+
+                    <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)} style={{ flex: 1, padding: '10px', borderRadius: '6px', border: '1px solid #ccc', width: '33%' }}>
                         {uniqueCategories.map(cat => ( <option key={cat} value={cat}>{cat === 'ALL' ? 'All Categories' : cat.toUpperCase()}</option> ))}
                     </select>
-                    <select value={stockFilter} onChange={(e) => setStockFilter(e.target.value)} style={{ flex: 1, padding: '10px', borderRadius: '6px', border: '1px solid #ccc', width: '50%' }}>
+                    <select value={stockFilter} onChange={(e) => setStockFilter(e.target.value)} style={{ flex: 1, padding: '10px', borderRadius: '6px', border: '1px solid #ccc', width: '33%' }}>
                         <option value="ALL">All Stock Status</option>
                         <option value="IN_STOCK">In Stock</option>
                         <option value="OUT_OF_STOCK">Out of Stock</option>
@@ -55,20 +63,28 @@ const SellerInventoryView = ({
             {/* Product List Grid */}
             <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(auto-fill, minmax(300px, 1fr))', gap: isMobile ? '10px' : '20px', width: '100%', boxSizing: 'border-box' }}>
                 {filteredProducts.length === 0 ? (
-                    <div style={{ width: '100%', textAlign: 'center', padding: '40px', color: '#888', gridColumn: '1 / -1' }}>No products match your search or filters.</div>
+                    <div style={{ width: '100%', textAlign: 'center', padding: '40px', color: '#888', gridColumn: '1 / -1' }}>
+                        {archiveFilter === 'ARCHIVED' ? 'Your trash is empty.' : 'No products match your search or filters.'}
+                    </div>
                 ) : (
                     filteredProducts.map((p, i) => (
                     <div key={i} style={{ 
-                        border: p.isArchived ? '2px solid #dc3545' : '1px solid #ccc', padding: isMobile ? 10 : 15, borderRadius: 12, background: p.isArchived ? '#fff5f5' : 'white', 
+                        border: p.isArchived ? '2px solid #dc3545' : (p.isDeleted ? '1px solid #6c757d' : '1px solid #ccc'), 
+                        padding: isMobile ? 10 : 15, borderRadius: 12, 
+                        background: p.isArchived ? '#fff5f5' : (p.isDeleted ? '#f8f9fa' : 'white'), 
                         boxShadow: '0 2px 5px rgba(0,0,0,0.1)', position: 'relative', 
-                        opacity: (p.qty <= 0 || p.isActive === false) ? 0.6 : 1, 
+                        opacity: (p.qty <= 0 || p.isActive === false || p.isDeleted) ? 0.6 : 1, 
                         transition: 'all 0.3s ease',
                         display: 'flex', flexDirection: 'column', width: '100%', boxSizing: 'border-box'
                     }}>
                         
                         {p.isArchived ? (
                             <div style={{ position: 'absolute', top: '10px', right: '10px', background: '#dc3545', color: 'white', padding: '4px 8px', borderRadius: '4px', fontWeight: 'bold', fontSize: '9px', zIndex: 10, letterSpacing: '0.5px', boxShadow: '0 2px 4px rgba(0,0,0,0.2)', border: '1px solid white' }}>
-                                🚫 TAKEN DOWN
+                                🚫 BANNED
+                            </div>
+                        ) : p.isDeleted ? (
+                            <div style={{ position: 'absolute', top: '10px', right: '10px', background: '#6c757d', color: 'white', padding: '4px 8px', borderRadius: '4px', fontWeight: 'bold', fontSize: '9px', zIndex: 10, letterSpacing: '0.5px', boxShadow: '0 2px 4px rgba(0,0,0,0.2)', border: '1px solid white' }}>
+                                🗑️ TRASHED
                             </div>
                         ) : p.qty <= 0 ? (
                             <div style={{ position: 'absolute', top: '10px', left: '10px', background: '#dc3545', color: 'white', padding: '4px 8px', borderRadius: '4px', fontWeight: 'bold', fontSize: '9px', zIndex: 10, letterSpacing: '0.5px', boxShadow: '0 2px 4px rgba(0,0,0,0.2)' }}>
@@ -110,7 +126,6 @@ const SellerInventoryView = ({
                             
                             <textarea placeholder="Description" value={editingProduct.description || ''} onChange={(e) => setEditingProduct({...editingProduct, description: e.target.value})} style={{ padding: '6px', height: '60px', boxSizing: 'border-box', fontFamily: 'inherit', width: '100%' }} />
                             
-                            {/* 🔥 NEW TAX SECTION FOR EDIT MODE */}
                             <div style={{ background: '#f8f9fa', padding: '8px', borderRadius: '6px', border: '1px solid #e2e8f0', marginTop: '5px' }}>
                                 <label style={{ fontSize: '11px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Tax Info (GST & HSN) *</label>
                                 <div style={{ display: 'flex', gap: '5px', width: '100%' }}>
@@ -132,6 +147,15 @@ const SellerInventoryView = ({
                                         style={{ padding: '6px', flex: 1, boxSizing: 'border-box', minWidth: '0', fontSize: '11px', borderRadius: '4px', border: '1px solid #ccc' }} 
                                     />
                                 </div>
+                                <label style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', marginTop: '10px', fontSize: '10px', color: '#555', cursor: 'pointer' }}>
+                                    <input 
+                                        type="checkbox" 
+                                        checked={editingProduct.gstConfirm || false} 
+                                        onChange={(e) => setEditingProduct({...editingProduct, gstConfirm: e.target.checked})} 
+                                        style={{ marginTop: '1px', width: '12px', height: '12px' }} 
+                                    />
+                                    <span style={{ lineHeight: '1.4' }}>I confirm the HSN code and GST % are legally accurate.</span>
+                                </label>
                             </div>
 
                             <label style={{ fontSize: '11px', fontWeight: 'bold', marginTop: '5px' }}>Gallery (Click ✕ to remove):</label>
@@ -156,8 +180,9 @@ const SellerInventoryView = ({
                                 setEditingProduct({...editingProduct, imageUrl: JSON.stringify([...currentImages, ...newImages])});
                             }} style={{ fontSize: '11px', maxWidth: '100%' }} />
                             
+                            {/* 🔥 HERE ARE THE CORRECT SAVE AND CANCEL BUTTONS */}
                             <div style={{ display: 'flex', gap: '5px', marginTop: '10px' }}>
-                                <button onClick={handleUpdateProduct} style={{ flex: 1, background: '#28a745', color: 'white', border: 'none', padding: '10px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', fontSize: '12px' }}>Save</button>
+                                <button onClick={handleUpdateProduct} style={{ flex: 1, background: '#28a745', color: 'white', border: 'none', padding: '10px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', fontSize: '12px' }}>Save Changes</button>
                                 <button onClick={() => setEditingProduct(null)} style={{ flex: 1, background: '#6c757d', color: 'white', border: 'none', padding: '10px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px' }}>Cancel</button>
                             </div>
                         </div>
@@ -182,9 +207,8 @@ const SellerInventoryView = ({
 
                                 <p style={{ fontSize: '11px', color: '#555', marginBottom: '5px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>Stock: <strong style={{ color: p.qty <= 0 ? 'red' : 'inherit' }}>{p.qty}</strong> | SKU: {p.sku || 'N/A'}</p>
                                 
-                                {/* 🔥 NEW: Show active GST setting in view mode */}
                                 <p style={{ fontSize: '11px', color: '#856404', background: '#fff3cd', padding: '2px 6px', borderRadius: '4px', display: 'inline-block', width: 'fit-content', marginTop: '0', marginBottom: '5px' }}>
-                                    GST: {(p.gstPercentage * 100).toFixed(0)}% | HSN: {p.hsnCode || 'Pending'}
+                                    GST: {p.gstPercentage != null ? (p.gstPercentage * 100).toFixed(0) : '18'}% | HSN: {p.hsnCode || 'Pending'}
                                 </p>
                                 
                                 {!isMobile && (
@@ -201,24 +225,39 @@ const SellerInventoryView = ({
                                         </span>
                                     </div>
                                 )}
+                                {p.isDeleted && !p.isArchived && (
+                                    <div style={{ padding: '8px', background: '#e9ecef', color: '#495057', borderRadius: '4px', fontSize: '11px', fontWeight: 'bold', border: '1px solid #ced4da', marginTop: '10px', marginBottom: '10px', lineHeight: '1.2' }}>
+                                        🗑️ Moved to Trash<br/>
+                                        <span style={{ fontWeight: 'normal', color: '#666' }}>You deleted this product. It is hidden from buyers.</span>
+                                    </div>
+                                )}
                                 
+                                {/* 🔥 HERE ARE THE VIEW MODE BUTTONS */}
                                 <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: '5px', marginTop: 'auto', paddingTop: '10px' }}>
-                                    <button 
-                                        disabled={p.isArchived}
-                                        onClick={() => handleToggleVisibility(p)} 
-                                        style={{ 
-                                            flex: 1, 
-                                            background: p.isArchived ? '#ccc' : (p.isActive === false ? '#28a745' : '#6c757d'), 
-                                            color: 'white', border: 'none', padding: '8px', borderRadius: 4, 
-                                            cursor: p.isArchived ? 'not-allowed' : 'pointer', 
-                                            fontWeight: 'bold', fontSize: '11px', width: '100%' 
-                                        }}
-                                    >
-                                        {p.isArchived ? '🚫 Locked' : (p.isActive === false ? '✅ Set Active' : '👁️ Hide')}
-                                    </button>
+                                    {!p.isDeleted && (
+                                        <button 
+                                            disabled={p.isArchived}
+                                            onClick={() => handleToggleVisibility(p)} 
+                                            style={{ 
+                                                flex: 1, 
+                                                background: p.isArchived ? '#ccc' : (p.isActive === false ? '#28a745' : '#6c757d'), 
+                                                color: 'white', border: 'none', padding: '8px', borderRadius: 4, 
+                                                cursor: p.isArchived ? 'not-allowed' : 'pointer', 
+                                                fontWeight: 'bold', fontSize: '11px', width: '100%' 
+                                            }}
+                                        >
+                                            {p.isArchived ? '🚫 Locked' : (p.isActive === false ? '✅ Set Active' : '👁️ Hide')}
+                                        </button>
+                                    )}
                                     <div style={{ display: 'flex', gap: '5px', width: '100%' }}>
-                                      <button onClick={() => setEditingProduct(p)} style={{ flex: 1, background: '#ffc107', border: 'none', padding: '8px', borderRadius: 4, cursor: 'pointer', fontWeight: 'bold', fontSize: '11px' }}>Edit</button>
-                                      <button onClick={() => handleDeleteProduct(p.id)} style={{ flex: 1, color: 'red', border: '1px solid red', padding: '8px', borderRadius: 4, background: 'white', cursor: 'pointer', fontSize: '11px' }}>Delete</button>
+                                        {!p.isDeleted ? (
+                                            <>
+                                                <button onClick={() => setEditingProduct(p)} style={{ flex: 1, background: '#ffc107', border: 'none', padding: '8px', borderRadius: 4, cursor: 'pointer', fontWeight: 'bold', fontSize: '11px', color: 'black' }}>Edit</button>
+                                                <button onClick={() => handleDeleteProduct(p.id)} style={{ flex: 1, color: 'red', border: '1px solid red', padding: '8px', borderRadius: 4, background: 'white', cursor: 'pointer', fontSize: '11px', fontWeight: 'bold' }}>Delete</button>
+                                            </>
+                                        ) : (
+                                            <button onClick={() => handleRestoreProduct(p.id)} style={{ flex: 1, background: '#17a2b8', color: 'white', border: 'none', padding: '8px', borderRadius: 4, cursor: 'pointer', fontWeight: 'bold', fontSize: '11px' }}>♻️ Restore</button>
+                                        )}
                                     </div>
                                 </div>
                             </div>

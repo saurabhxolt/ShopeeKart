@@ -14,23 +14,39 @@ app.http('DeleteProduct', {
         const productId = request.query.get('productId');
         const userId = request.query.get('userId');
 
+        if (!productId || !userId) {
+            return { status: 400, body: "Missing productId or userId" };
+        }
+
+        // 🔥 THE FIX: Soft Delete using UPDATE instead of a hard DELETE
         const query = `
-            DELETE p FROM Products p
+            UPDATE p
+            SET p.IsDeleted = 1
+            FROM Products p
             JOIN Sellers s ON p.SellerId = s.SellerId
             WHERE p.ProductId = @pId AND s.UserId = @uId
         `;
 
         return new Promise((resolve) => {
             const connection = new Connection(config);
+            
             connection.on('connect', (err) => {
-                const req = new Request(query, (err) => { 
+                if (err) return resolve({ status: 500, body: "Database connection failed" });
+
+                const req = new Request(query, (err, rowCount) => { 
                     connection.close(); 
-                    resolve({ status: 200, body: "Deleted" }); 
+                    if (err) return resolve({ status: 500, body: "Failed to move to trash: " + err.message });
+                    if (rowCount === 0) return resolve({ status: 403, body: "Unauthorized or Product not found" });
+                    
+                    resolve({ status: 200, body: "Moved to trash successfully" }); 
                 });
-                req.addParameter('pId', TYPES.Int, productId);
-                req.addParameter('uId', TYPES.Int, userId);
+                
+                req.addParameter('pId', TYPES.Int, parseInt(productId));
+                req.addParameter('uId', TYPES.Int, parseInt(userId));
+                
                 connection.execSql(req);
             });
+            
             connection.connect();
         });
     }
