@@ -1,12 +1,6 @@
 const { app } = require('@azure/functions');
-const { Connection, Request, TYPES } = require('tedious');
-const { BlobServiceClient } = require('@azure/storage-blob'); 
-
-const config = {
-    server: 'localhost', 
-    authentication: { type: 'default', options: { userName: 'ecommerce_user', password: 'password123' } },
-    options: { encrypt: false, database: 'EcommerceDB', trustServerCertificate: true }
-};
+const sql = require('mssql');
+const { BlobServiceClient } = require('@azure/storage-blob');
 
 app.http('AddProduct', {
     methods: ['POST'],
@@ -55,68 +49,51 @@ app.http('AddProduct', {
 
 
             // --- 2. SQL DATABASE INSERTION LOGIC ---
-            return new Promise((resolve) => {
-                const connection = new Connection(config);
-                
-                connection.on('connect', (err) => {
-                    if (err) return resolve({ status: 500, jsonBody: { error: "DB Connection Error: " + err.message } });
+            // Automatically uses the environment variable like your GetSellers.js file
+            const pool = await sql.connect(process.env.SQL_CONNECTION);
 
-                    let sellerId = null;
+            // Step 2a: Get the SellerId
+            const getSellerResult = await pool.request()
+                .input('uid', sql.Int, userId)
+                .query(`SELECT SellerId FROM Sellers WHERE UserId = @uid`);
 
-                    const getSellerIdQuery = `SELECT SellerId FROM Sellers WHERE UserId = @uid`;
-                    const reqSeller = new Request(getSellerIdQuery, (err) => {
-                        if (err || !sellerId) {
-                            connection.close();
-                            return resolve({ status: 403, jsonBody: { error: "Seller Account Not Found" } });
-                        }
+            if (getSellerResult.recordset.length === 0) {
+                return { status: 403, jsonBody: { error: "Seller Account Not Found" } };
+            }
 
-                        const insertProduct = `
-                            INSERT INTO Products (
-                                SellerId, Name, Price, Stock, ImageUrl, 
-                                Description, OriginalPrice, Category, Brand, Weight, SKU, IsActive,
-                                GSTPercentage, HSNCode
-                            ) 
-                            VALUES (
-                                @sid, @name, @price, @stock, @img, 
-                                @desc, @origPrice, @cat, @brand, @weight, @sku, 1,
-                                @gst, @hsn
-                            )
-                        `;
-                        
-                        const reqInsert = new Request(insertProduct, (err) => {
-                            connection.close();
-                            if (err) return resolve({ status: 500, jsonBody: { error: "Insert Error: " + err.message } });
-                            resolve({ status: 200, jsonBody: { message: "Product Added Successfully" } });
-                        });
+            const sellerId = getSellerResult.recordset[0].SellerId;
 
-                        reqInsert.addParameter('sid', TYPES.Int, sellerId);
-                        reqInsert.addParameter('name', TYPES.VarChar, name);
-                        
-                        // 🔥 FIX: ADDED PRECISION AND SCALE TO ALL DECIMAL FIELDS
-                        reqInsert.addParameter('price', TYPES.Decimal, price, { precision: 18, scale: 2 });
-                        reqInsert.addParameter('stock', TYPES.Int, stock);
-                        reqInsert.addParameter('img', TYPES.NVarChar, finalImageUrlString); 
-                        reqInsert.addParameter('desc', TYPES.NVarChar, description || null);
-                        reqInsert.addParameter('origPrice', TYPES.Decimal, originalPrice || null, { precision: 18, scale: 2 });
-                        reqInsert.addParameter('cat', TYPES.VarChar, category || null);
-                        reqInsert.addParameter('brand', TYPES.VarChar, brand || null);
-                        reqInsert.addParameter('weight', TYPES.Decimal, weight || null, { precision: 10, scale: 2 });
-                        reqInsert.addParameter('sku', TYPES.VarChar, sku || null);
-                        
-                        // 🔥 FIX: Added precision/scale so 0.05 saves correctly instead of 0
-                        reqInsert.addParameter('gst', TYPES.Decimal, gstPercentage !== undefined ? parseFloat(gstPercentage) : 0.18, { precision: 4, scale: 2 });
-                        reqInsert.addParameter('hsn', TYPES.VarChar, hsnCode || null);
+            // Step 2b: Insert the Product
+            const insertQuery = `
+                INSERT INTO Products (
+                    SellerId, Name, Price, Stock, ImageUrl, 
+                    Description, OriginalPrice, Category, Brand, Weight, SKU, IsActive,
+                    GSTPercentage, HSNCode
+                ) 
+                VALUES (
+                    @sid, @name, @price, @stock, @img, 
+                    @desc, @origPrice, @cat, @brand, @weight, @sku, 1,
+                    @gst, @hsn
+                )
+            `;
 
-                        connection.execSql(reqInsert);
-                    });
+            await pool.request()
+                .input('sid', sql.Int, sellerId)
+                .input('name', sql.VarChar, name)
+                .input('price', sql.Decimal(18, 2), price)
+                .input('stock', sql.Int, stock)
+                .input('img', sql.NVarChar, finalImageUrlString)
+                .input('desc', sql.NVarChar, description || null)
+                .input('origPrice', sql.Decimal(18, 2), originalPrice || null)
+                .input('cat', sql.VarChar, category || null)
+                .input('brand', sql.VarChar, brand || null)
+                .input('weight', sql.Decimal(10, 2), weight || null)
+                .input('sku', sql.VarChar, sku || null)
+                .input('gst', sql.Decimal(4, 2), gstPercentage !== undefined ? parseFloat(gstPercentage) : 0.18)
+                .input('hsn', sql.VarChar, hsnCode || null)
+                .query(insertQuery);
 
-                    reqSeller.on('row', (columns) => { sellerId = columns[0].value; });
-                    reqSeller.addParameter('uid', TYPES.Int, userId);
-                    connection.execSql(reqSeller);
-                });
-                
-                connection.connect();
-            });
+            return { status: 200, jsonBody: { message: "Product Added Successfully" } };
 
         } catch (error) {
             context.error("Function Error:", error);

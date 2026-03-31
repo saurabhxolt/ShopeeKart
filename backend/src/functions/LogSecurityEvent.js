@@ -1,11 +1,5 @@
 const { app } = require('@azure/functions');
-const { Connection, Request, TYPES } = require('tedious');
-
-const config = {
-    server: 'localhost', 
-    authentication: { type: 'default', options: { userName: 'ecommerce_user', password: 'password123' } },
-    options: { encrypt: false, database: 'EcommerceDB', trustServerCertificate: true }
-};
+const sql = require('mssql');
 
 app.http('LogSecurityEvent', {
     methods: ['POST'],
@@ -21,35 +15,31 @@ app.http('LogSecurityEvent', {
             // 🔥 THE FIX: Extract the Device/Browser data from the request headers
             const deviceData = request.headers.get('user-agent') || 'Unknown Device';
 
-            return new Promise((resolve) => {
-                const connection = new Connection(config);
-                connection.on('connect', (err) => {
-                    if (err) return resolve({ status: 500, body: "DB Error" });
+            // Connect using your centralized environment variable
+            const pool = await sql.connect(process.env.SQL_CONNECTION);
 
-                    // 🔥 THE FIX: Added DeviceData to the INSERT query
-                    const query = `
-                        INSERT INTO LoginLogs (UserId, EmailAttempt, IPAddress, Action, DeviceData)
-                        VALUES (@uid, @email, @ip, @action, @device)
-                    `;
+            // 🔥 THE FIX: Added DeviceData to the INSERT query
+            const query = `
+                INSERT INTO LoginLogs (UserId, EmailAttempt, IPAddress, Action, DeviceData)
+                VALUES (@uid, @email, @ip, @action, @device)
+            `;
 
-                    const req = new Request(query, (err) => {
-                        connection.close();
-                        if (err) return resolve({ status: 500, body: "Insert Error" });
-                        resolve({ status: 200, body: "Logged" });
-                    });
+            // Execute the insert with secure parameter binding
+            await pool.request()
+                .input('uid', sql.Int, userId || null)
+                .input('email', sql.VarChar, email || '')
+                .input('ip', sql.VarChar, ipAddress)
+                .input('action', sql.VarChar, action)
+                .input('device', sql.VarChar, deviceData)
+                .query(query);
 
-                    req.addParameter('uid', TYPES.Int, userId || null);
-                    req.addParameter('email', TYPES.VarChar, email || '');
-                    req.addParameter('ip', TYPES.VarChar, ipAddress);
-                    req.addParameter('action', TYPES.VarChar, action);
-                    req.addParameter('device', TYPES.VarChar, deviceData); // Bind the new parameter
+            return { status: 200, body: "Logged" };
 
-                    connection.execSql(req);
-                });
-                connection.connect();
-            });
         } catch (error) {
-            return { status: 400, body: "Invalid payload" };
+            context.error("LogSecurityEvent Error:", error);
+            // We return 500 here if it's a true server/DB error, instead of masking 
+            // everything as a 400 "Invalid payload" like the old catch block did.
+            return { status: 500, body: "Server Error: " + error.message };
         }
     }
 });

@@ -1,3 +1,4 @@
+# --- Standard Node.js & Tooling ---
 # Logs
 logs
 *.log
@@ -84,9 +85,6 @@ dist
 
 # Gatsby files
 .cache/
-# Comment in the public line in if your project uses Gatsby and not Next.js
-# https://nextjs.org/blog/next-9-1#public-directory-support
-# public
 
 # vuepress build output
 .vuepress/dist
@@ -137,3 +135,21 @@ dist
 # Vite logs files
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
+
+# --- Azure Functions & Azurite (ArivKart Specific) ---
+# Local storage emulator files (the ones from your screenshot)
+__blobstorage__/
+__queuestorage__/
+__tablestorage__/
+azurite_db_*.json
+
+# Local secrets & Function App configuration
+# (Contains your local database password - NEVER commit this)
+local.settings.json
+
+# VS Code project settings (keep your personal editor setup local)
+.vscode/
+
+# Build artifacts for Azure
+bin/
+obj/

@@ -1,12 +1,6 @@
 const { app } = require('@azure/functions');
-const { Connection, Request, TYPES } = require('tedious');
+const sql = require('mssql');
 const { BlobServiceClient } = require('@azure/storage-blob');
-
-const config = {
-    server: 'localhost',
-    authentication: { type: 'default', options: { userName: 'ecommerce_user', password: 'password123' } },
-    options: { encrypt: false, database: 'EcommerceDB', trustServerCertificate: true }
-};
 
 app.http('UpdateSellerProfile', {
     methods: ['POST'],
@@ -15,12 +9,11 @@ app.http('UpdateSellerProfile', {
         try {
             const body = await request.json();
             
-            // 🔥 UPDATED: Extracted all the new KYC fields from the request body
             let { 
                 userId, storeName, description, supportEmail, supportPhone, 
                 pickupAddress, gstin, bankAccount, ifsc, storeLogo, storeBanner, 
-                verificationDoc, // Legacy array (if you still use it)
-                pan, aadhar, panDoc, gstDoc, chequeDoc, signature // 🔥 NEW KYC DATA
+                verificationDoc, 
+                pan, aadhar, panDoc, gstDoc, chequeDoc, signature 
             } = body;
 
             if (!userId) return { status: 400, body: "Missing userId" };
@@ -32,6 +25,7 @@ app.http('UpdateSellerProfile', {
             await containerClient.createIfNotExists({ access: 'blob' });
 
             const uploadToBlob = async (base64Str, prefix) => {
+                // If it's already a URL or empty, don't re-upload
                 if (!base64Str || base64Str.startsWith('http')) return base64Str; 
                 
                 const matches = base64Str.match(/^data:(.*);base64,(.+)$/);
@@ -56,17 +50,17 @@ app.http('UpdateSellerProfile', {
                 return blockBlobClient.url;
             };
 
-            // Upload Standard Images
+            // Process Standard Images
             storeLogo = await uploadToBlob(storeLogo, 'logo');
             storeBanner = await uploadToBlob(storeBanner, 'banner');
 
-            // 🔥 NEW: Upload specific KYC Documents
+            // Process KYC Documents
             panDoc = await uploadToBlob(panDoc, 'kyc-pan');
             gstDoc = await uploadToBlob(gstDoc, 'kyc-gst');
             chequeDoc = await uploadToBlob(chequeDoc, 'kyc-cheque');
             signature = await uploadToBlob(signature, 'kyc-signature');
 
-            // --- HANDLE MULTIPLE KYC DOCUMENTS (Legacy fallback) ---
+            // Handle Legacy Documents Array
             let finalKycUrls = [];
             if (verificationDoc && Array.isArray(verificationDoc)) {
                 for (let i = 0; i < verificationDoc.length; i++) {
@@ -77,72 +71,57 @@ app.http('UpdateSellerProfile', {
             const verificationDocString = JSON.stringify(finalKycUrls);
 
             // --- 2. SQL DATABASE UPDATE ---
-            return new Promise((resolve) => {
-                const connection = new Connection(config);
-                
-                connection.on('connect', (err) => {
-                    if (err) return resolve({ status: 500, body: "Database connection failed" });
+            const pool = await sql.connect(process.env.SQL_CONNECTION);
 
-                    // 🔥 UPDATED: Added the 6 new columns to the SET statement
-                    const query = `
-                        UPDATE Sellers 
-                        SET StoreName = @storeName, 
-                            Description = @description, 
-                            SupportEmail = @supportEmail, 
-                            SupportPhone = @supportPhone, 
-                            PickupAddress = @pickupAddress, 
-                            GSTIN = @gstin, 
-                            BankAccount = @bankAccount, 
-                            IFSC = @ifsc, 
-                            StoreLogo = @storeLogo,
-                            StoreBanner = @storeBanner, 
-                            VerificationDoc = @verificationDoc,
-                            PAN = @pan,
-                            Aadhar = @aadhar,
-                            PanDocUrl = @panDoc,
-                            GstDocUrl = @gstDoc,
-                            ChequeDocUrl = @chequeDoc,
-                            SignatureUrl = @signature,
-                            IsApproved = 0  -- Setting to 0 triggers the Admin Verification requirement
-                        WHERE UserId = @userId
-                    `;
+            const query = `
+                UPDATE Sellers 
+                SET StoreName = @storeName, 
+                    Description = @description, 
+                    SupportEmail = @supportEmail, 
+                    SupportPhone = @supportPhone, 
+                    PickupAddress = @pickupAddress, 
+                    GSTIN = @gstin, 
+                    BankAccount = @bankAccount, 
+                    IFSC = @ifsc, 
+                    StoreLogo = @storeLogo,
+                    StoreBanner = @storeBanner, 
+                    VerificationDoc = @verificationDoc,
+                    PAN = @pan,
+                    Aadhar = @aadhar,
+                    PanDocUrl = @panDoc,
+                    GstDocUrl = @gstDoc,
+                    ChequeDocUrl = @chequeDoc,
+                    SignatureUrl = @signature,
+                    IsApproved = 0  -- Force re-verification on profile update
+                WHERE UserId = @userId
+            `;
 
-                    const req = new Request(query, (err) => {
-                        connection.close();
-                        if (err) return resolve({ status: 500, body: "Failed to update profile: " + err.message });
-                        resolve({ status: 200, body: "Profile updated successfully" });
-                    });
+            await pool.request()
+                .input('userId', sql.Int, parseInt(userId))
+                .input('storeName', sql.VarChar, storeName || null)
+                .input('description', sql.NVarChar, description || null)
+                .input('supportEmail', sql.VarChar, supportEmail || null)
+                .input('supportPhone', sql.VarChar, supportPhone || null)
+                .input('pickupAddress', sql.NVarChar, pickupAddress || null)
+                .input('gstin', sql.VarChar, gstin || null)
+                .input('bankAccount', sql.VarChar, bankAccount || null)
+                .input('ifsc', sql.VarChar, ifsc || null)
+                .input('storeLogo', sql.VarChar, storeLogo || null)
+                .input('storeBanner', sql.VarChar, storeBanner || null)
+                .input('verificationDoc', sql.NVarChar, verificationDocString)
+                .input('pan', sql.VarChar, pan || null)
+                .input('aadhar', sql.VarChar, aadhar || null)
+                .input('panDoc', sql.NVarChar, panDoc || null)
+                .input('gstDoc', sql.NVarChar, gstDoc || null)
+                .input('chequeDoc', sql.NVarChar, chequeDoc || null)
+                .input('signature', sql.NVarChar, signature || null)
+                .query(query);
 
-                    // Bind Standard Parameters
-                    req.addParameter('userId', TYPES.Int, parseInt(userId));
-                    req.addParameter('storeName', TYPES.VarChar, storeName || null);
-                    req.addParameter('description', TYPES.NVarChar, description || null);
-                    req.addParameter('supportEmail', TYPES.VarChar, supportEmail || null);
-                    req.addParameter('supportPhone', TYPES.VarChar, supportPhone || null);
-                    req.addParameter('pickupAddress', TYPES.NVarChar, pickupAddress || null);
-                    req.addParameter('gstin', TYPES.VarChar, gstin || null);
-                    req.addParameter('bankAccount', TYPES.VarChar, bankAccount || null);
-                    req.addParameter('ifsc', TYPES.VarChar, ifsc || null);
-                    req.addParameter('storeLogo', TYPES.VarChar, storeLogo || null); 
-                    req.addParameter('storeBanner', TYPES.VarChar, storeBanner || null);
-                    req.addParameter('verificationDoc', TYPES.NVarChar, verificationDocString); 
+            return { status: 200, body: "Profile updated successfully" };
 
-                    // 🔥 NEW: Bind KYC Parameters
-                    req.addParameter('pan', TYPES.VarChar, pan || null);
-                    req.addParameter('aadhar', TYPES.VarChar, aadhar || null);
-                    req.addParameter('panDoc', TYPES.NVarChar, panDoc || null);
-                    req.addParameter('gstDoc', TYPES.NVarChar, gstDoc || null);
-                    req.addParameter('chequeDoc', TYPES.NVarChar, chequeDoc || null);
-                    req.addParameter('signature', TYPES.NVarChar, signature || null);
-
-                    connection.execSql(req);
-                });
-
-                connection.connect();
-            });
         } catch (error) {
-            context.error("Function Error:", error);
-            return { status: 500, body: "Server Error" };
+            context.error("UpdateSellerProfile Error:", error);
+            return { status: 500, body: "Server Error: " + error.message };
         }
     }
 });

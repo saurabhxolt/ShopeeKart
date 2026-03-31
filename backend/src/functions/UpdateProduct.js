@@ -1,12 +1,6 @@
 const { app } = require('@azure/functions');
-const { Connection, Request, TYPES } = require('tedious');
-const { BlobServiceClient } = require('@azure/storage-blob'); 
-
-const config = {
-    server: 'localhost', 
-    authentication: { type: 'default', options: { userName: 'ecommerce_user', password: 'password123' } },
-    options: { encrypt: false, database: 'EcommerceDB', trustServerCertificate: true }
-};
+const sql = require('mssql');
+const { BlobServiceClient } = require('@azure/storage-blob');
 
 app.http('UpdateProduct', {
     methods: ['POST'],
@@ -16,7 +10,7 @@ app.http('UpdateProduct', {
             const { 
                 productId, name, price, stock, imageUrl, 
                 description, originalPrice, category, brand, weight, sku, isActive,
-                gstPercentage, hsnCode // 🔥 NEW: Extract tax fields
+                gstPercentage, hsnCode 
             } = await request.json();
 
             // --- 1. AZURE BLOB STORAGE LOGIC ---
@@ -27,8 +21,10 @@ app.http('UpdateProduct', {
 
             let imagesArray = [];
             try {
-                imagesArray = JSON.parse(imageUrl);
-                if (!Array.isArray(imagesArray)) imagesArray = [imageUrl];
+                // If it's already a JSON string from the frontend, parse it
+                imagesArray = typeof imageUrl === 'string' && imageUrl.startsWith('[') 
+                    ? JSON.parse(imageUrl) 
+                    : [imageUrl];
             } catch (e) {
                 imagesArray = [imageUrl];
             }
@@ -38,9 +34,13 @@ app.http('UpdateProduct', {
             for (let i = 0; i < imagesArray.length; i++) {
                 const imgStr = imagesArray[i];
 
+                if (!imgStr) continue;
+
+                // If it's already a hosted URL, just keep it
                 if (imgStr.startsWith('http')) {
                     finalUrls.push(imgStr);
                 } 
+                // If it's a new Base64 upload, save it to Blob Storage
                 else if (imgStr.startsWith('data:image')) {
                     const matches = imgStr.match(/^data:image\/([A-Za-z-+\/]+);base64,(.+)$/);
                     if (!matches || matches.length !== 3) continue;
@@ -63,65 +63,49 @@ app.http('UpdateProduct', {
 
             const finalImageUrlString = JSON.stringify(finalUrls);
 
-
             // --- 2. SQL DATABASE UPDATE ---
-            return new Promise((resolve) => {
-                const connection = new Connection(config);
-                connection.on('connect', (err) => {
-                    if (err) return resolve({ status: 500, jsonBody: { error: "DB Connection Error: " + err.message } });
+            const pool = await sql.connect(process.env.SQL_CONNECTION);
 
-                    // 🔥 UPDATED QUERY: Added GSTPercentage and HSNCode
-                    const query = `
-                        UPDATE Products 
-                        SET Name = @name, 
-                            Price = @price, 
-                            Stock = @stock, 
-                            ImageUrl = @img,
-                            Description = @desc,
-                            OriginalPrice = @origPrice,
-                            Category = @cat,
-                            Brand = @brand,
-                            Weight = @weight,
-                            SKU = @sku,
-                            IsActive = @active,
-                            GSTPercentage = @gst,
-                            HSNCode = @hsn,
-                            FixSubmitted = CASE WHEN IsArchived = 1 THEN 1 ELSE FixSubmitted END
-                        WHERE ProductId = @pid
-                    `;
+            const query = `
+                UPDATE Products 
+                SET Name = @name, 
+                    Price = @price, 
+                    Stock = @stock, 
+                    ImageUrl = @img,
+                    Description = @desc,
+                    OriginalPrice = @origPrice,
+                    Category = @cat,
+                    Brand = @brand,
+                    Weight = @weight,
+                    SKU = @sku,
+                    IsActive = @active,
+                    GSTPercentage = @gst,
+                    HSNCode = @hsn,
+                    FixSubmitted = CASE WHEN IsArchived = 1 THEN 1 ELSE FixSubmitted END
+                WHERE ProductId = @pid
+            `;
 
-                    const req = new Request(query, (err) => {
-                        connection.close();
-                        if (err) return resolve({ status: 500, jsonBody: { error: "Update Error: " + err.message } });
-                        resolve({ status: 200, jsonBody: { message: "Product Updated Successfully" } });
-                    });
+            await pool.request()
+                .input('pid', sql.Int, productId)
+                .input('name', sql.VarChar, name)
+                .input('price', sql.Decimal(18, 2), price)
+                .input('stock', sql.Int, stock)
+                .input('img', sql.NVarChar, finalImageUrlString)
+                .input('desc', sql.NVarChar, description || null)
+                .input('origPrice', sql.Decimal(18, 2), originalPrice || null)
+                .input('cat', sql.VarChar, category || null)
+                .input('brand', sql.VarChar, brand || null)
+                .input('weight', sql.Decimal(10, 2), weight || null)
+                .input('sku', sql.VarChar, sku || null)
+                .input('active', sql.Bit, isActive !== undefined ? isActive : 1)
+                .input('gst', sql.Decimal(4, 2), gstPercentage !== undefined ? parseFloat(gstPercentage) : 0.18)
+                .input('hsn', sql.VarChar, hsnCode || null)
+                .query(query);
 
-                    req.addParameter('pid', TYPES.Int, productId);
-                    req.addParameter('name', TYPES.VarChar, name);
-                    
-                    // 🔥 FIX: ADDED PRECISION AND SCALE TO ALL DECIMAL FIELDS
-                    req.addParameter('price', TYPES.Decimal, price, { precision: 18, scale: 2 });
-                    req.addParameter('stock', TYPES.Int, stock);
-                    req.addParameter('img', TYPES.NVarChar, finalImageUrlString); 
-                    req.addParameter('desc', TYPES.NVarChar, description || null);
-                    req.addParameter('origPrice', TYPES.Decimal, originalPrice || null, { precision: 18, scale: 2 });
-                    req.addParameter('cat', TYPES.VarChar, category || null);
-                    req.addParameter('brand', TYPES.VarChar, brand || null);
-                    req.addParameter('weight', TYPES.Decimal, weight || null, { precision: 10, scale: 2 });
-                    req.addParameter('sku', TYPES.VarChar, sku || null);
-                    req.addParameter('active', TYPES.Bit, isActive !== undefined ? isActive : 1);
-                    
-                    // 🔥 NEW: Tax Fields with Precision
-                    req.addParameter('gst', TYPES.Decimal, gstPercentage !== undefined ? parseFloat(gstPercentage) : 0.18, { precision: 4, scale: 2 });
-                    req.addParameter('hsn', TYPES.VarChar, hsnCode || null);
-
-                    connection.execSql(req);
-                });
-                connection.connect();
-            });
+            return { status: 200, jsonBody: { message: "Product Updated Successfully" } };
 
         } catch (error) {
-            context.error("Function Error:", error);
+            context.error("UpdateProduct Error:", error);
             return { status: 500, jsonBody: { error: "Server Error: " + error.message } };
         }
     }

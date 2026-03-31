@@ -1,11 +1,5 @@
 const { app } = require('@azure/functions');
-const { Connection, Request, TYPES } = require('tedious');
-
-const config = {
-    server: 'localhost', 
-    authentication: { type: 'default', options: { userName: 'ecommerce_user', password: 'password123' } },
-    options: { encrypt: false, database: 'EcommerceDB', trustServerCertificate: true }
-};
+const sql = require('mssql');
 
 app.http('RestoreProduct', {
     methods: ['POST'],
@@ -18,6 +12,10 @@ app.http('RestoreProduct', {
                 return { status: 400, body: "Missing productId or userId" };
             }
 
+            // Connect using your centralized environment variable
+            const pool = await sql.connect(process.env.SQL_CONNECTION);
+
+            // 🔥 THE LOGIC: Set IsDeleted back to 0
             const query = `
                 UPDATE p
                 SET p.IsDeleted = 0
@@ -26,31 +24,21 @@ app.http('RestoreProduct', {
                 WHERE p.ProductId = @pId AND s.UserId = @uId
             `;
 
-            return new Promise((resolve) => {
-                const connection = new Connection(config);
-                
-                connection.on('connect', (err) => {
-                    if (err) return resolve({ status: 500, body: "Database connection failed" });
+            const result = await pool.request()
+                .input('pId', sql.Int, parseInt(productId))
+                .input('uId', sql.Int, parseInt(userId))
+                .query(query);
 
-                    const req = new Request(query, (err, rowCount) => { 
-                        connection.close(); 
-                        if (err) return resolve({ status: 500, body: "Failed to restore: " + err.message });
-                        if (rowCount === 0) return resolve({ status: 403, body: "Unauthorized or Product not found" });
-                        
-                        resolve({ status: 200, body: "Product restored successfully" }); 
-                    });
-                    
-                    req.addParameter('pId', TYPES.Int, parseInt(productId));
-                    req.addParameter('uId', TYPES.Int, parseInt(userId));
-                    
-                    connection.execSql(req);
-                });
-                
-                connection.connect();
-            });
+            // Check if any row was actually updated
+            if (result.rowsAffected[0] === 0) {
+                return { status: 403, body: "Unauthorized or Product not found" };
+            }
+
+            return { status: 200, body: "Product restored successfully" };
+
         } catch (error) {
-            context.error("Function Error:", error);
-            return { status: 500, body: "Server Error" };
+            context.error("RestoreProduct Error:", error);
+            return { status: 500, body: "Server Error: " + error.message };
         }
     }
 });
