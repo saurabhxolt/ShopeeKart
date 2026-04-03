@@ -10,16 +10,28 @@ app.http('GetSellers', {
             
             const showAll = request.query.get('all') === 'true';
 
+            // 🔥 ADDED: SubscriptionPlan and CommissionRate alongside your existing columns
             let query = `
                 SELECT 
                     s.SellerId, 
                     s.UserId, 
-                    s.StoreName,      -- <--- CORRECT COLUMN NAME
+                    s.StoreName,      
                     s.Description, 
                     s.IsApproved,
                     s.IsDeleted,
+                    s.SupportEmail,
+                    s.SupportPhone,
+                    s.PickupAddress,
+                    s.GSTIN,
+                    s.BankAccount,
+                    s.IFSC,
+                    s.StoreLogo,
+                    s.StoreBanner,
+                    s.VerificationDoc,
                     u.FullName, 
-                    u.Email
+                    u.Email,
+                    ISNULL(s.SubscriptionPlan, 'Starter') AS SubscriptionPlan,
+                    ISNULL(s.CommissionRate, 0.10) AS CommissionRate
                 FROM Sellers s
                 INNER JOIN Users u ON s.UserId = u.UserId
             `;

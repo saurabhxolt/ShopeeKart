@@ -6,13 +6,13 @@ app.http('GetProducts', {
     authLevel: 'anonymous',
     handler: async (request, context) => {
         try {
-            const sellerId = request.query.get('sellerId');
+            const sellerIdParam = request.query.get('sellerId');
+            const parsedSellerId = parseInt(sellerIdParam);
             
             // 1. Connect using your shared connection string
             await sql.connect(process.env.SQL_CONNECTION);
 
             // 2. Query with Security Check (JOIN Sellers)
-            // We only select products where the Seller IsApproved = 1
             let query = `
                 SELECT 
                     p.ProductId as id, 
@@ -26,18 +26,27 @@ app.http('GetProducts', {
                     p.Brand as brand, 
                     p.Weight as weight, 
                     p.SKU as sku,
-                    p.SellerId as sellerId
+                    p.SellerId as sellerId,
+                    p.GSTPercentage as gstPercentage,   -- 🔥 Added Tax Columns
+                    p.HSNCode as hsnCode                -- 🔥 Added Tax Columns
                 FROM Products p
                 INNER JOIN Sellers s ON p.SellerId = s.SellerId
-                WHERE p.IsActive = 1 AND s.IsApproved = 1
+                WHERE p.IsActive = 1 
+                  AND s.IsApproved = 1
+                  AND (p.IsArchived = 0 OR p.IsArchived IS NULL)
+                  AND (s.IsDeleted = 0 OR s.IsDeleted IS NULL)
+                  AND (p.IsDeleted = 0 OR p.IsDeleted IS NULL) -- 🔥 THE BOUNCER: Blocks trashed items!
             `;
 
-            // 3. Add specific seller filter if requested
-            if (sellerId) {
-                query += ` AND p.SellerId = ${sellerId}`;
+            const dbRequest = new sql.Request();
+
+            // 3. Only add filter if it is a valid number!
+            if (sellerIdParam && !isNaN(parsedSellerId)) {
+                query += ` AND p.SellerId = @sellerId`;
+                dbRequest.input('sellerId', sql.Int, parsedSellerId);
             }
 
-            const result = await sql.query(query);
+            const result = await dbRequest.query(query);
             return { status: 200, jsonBody: result.recordset };
 
         } catch (err) {

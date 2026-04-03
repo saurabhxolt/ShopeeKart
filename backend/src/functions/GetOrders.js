@@ -23,13 +23,16 @@ app.http('GetOrders', {
                         o.OrderDate, 
                         o.TotalAmount, 
                         o.ShippingAddress, 
+                        o.TransactionId,   -- 🔥 ADDED TransactionId
                         o.Status,
                         u.FullName as BuyerName,
-                        u.Email as BuyerEmail,      -- <--- ADDED EMAIL HERE
+                        u.Email as BuyerEmail,
+                        s_main.StoreName,  -- 🔥 ADDED StoreName
                         (
                             SELECT 
                                 p.ProductId, p.Name, p.ImageUrl, 
-                                oi.Qty, oi.Price, oi.ItemStatus 
+                                oi.Qty, oi.Price, oi.ItemStatus,
+                                s.StoreName    -- 🔥 ADDED StoreName inside item JSON
                             FROM OrderItems oi
                             JOIN Products p ON oi.ProductId = p.ProductId
                             JOIN Sellers s ON oi.SellerId = s.SellerId
@@ -41,8 +44,8 @@ app.http('GetOrders', {
                     JOIN Sellers s_main ON oi_main.SellerId = s_main.SellerId
                     JOIN Users u ON o.UserId = u.UserId
                     WHERE s_main.UserId = ${paramId}
-                    -- CRITICAL: Must include u.Email in GROUP BY
-                    GROUP BY o.OrderId, o.OrderDate, o.TotalAmount, o.ShippingAddress, o.Status, u.FullName, u.Email 
+                    -- CRITICAL: Must include TransactionId and StoreName in GROUP BY
+                    GROUP BY o.OrderId, o.OrderDate, o.TotalAmount, o.ShippingAddress, o.TransactionId, o.Status, u.FullName, u.Email, s_main.StoreName
                     ORDER BY o.OrderDate DESC
                 `;
             } else {
@@ -53,15 +56,20 @@ app.http('GetOrders', {
                         o.OrderDate, 
                         o.TotalAmount, 
                         o.ShippingAddress, 
+                        o.TransactionId,   -- 🔥 ADDED TransactionId
                         o.Status,
                         u.FullName as BuyerName,
-                        u.Email as BuyerEmail,      -- <--- ADDED EMAIL HERE
+                        u.Email as BuyerEmail,
+                        -- 🔥 Subquery to grab the StoreName for the Order header
+                        (SELECT TOP 1 s.StoreName FROM OrderItems oi_s JOIN Sellers s ON oi_s.SellerId = s.SellerId WHERE oi_s.OrderId = o.OrderId) AS StoreName,
                         (
                             SELECT 
                                 p.ProductId, p.Name, p.ImageUrl, 
-                                oi.Qty, oi.Price, oi.ItemStatus
+                                oi.Qty, oi.Price, oi.ItemStatus,
+                                s.StoreName    -- 🔥 ADDED StoreName inside item JSON
                             FROM OrderItems oi
                             JOIN Products p ON oi.ProductId = p.ProductId
+                            JOIN Sellers s ON oi.SellerId = s.SellerId
                             WHERE oi.OrderId = o.OrderId
                             FOR JSON PATH
                         ) AS ItemsJson

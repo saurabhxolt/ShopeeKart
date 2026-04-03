@@ -1,127 +1,92 @@
 const { app } = require('@azure/functions');
-const { Connection, Request, TYPES } = require('tedious');
+const sql = require('mssql');
 const bcrypt = require('bcryptjs');
-
-const config = {
-    server: 'localhost', 
-    authentication: { type: 'default', options: { userName: 'ecommerce_user', password: 'password123' } },
-    options: { encrypt: false, database: 'EcommerceDB', trustServerCertificate: true }
-};
 
 app.http('VerifyOTP', {
     methods: ['POST'],
     authLevel: 'anonymous',
-    handler: async (request) => {
-        const { email, otp, fullName, password, role, storeName } = await request.json();
+    handler: async (request, context) => {
+        try {
+            const { email, otp, fullName, password, role, storeName } = await request.json();
 
-        return new Promise((resolve) => {
-            const connection = new Connection(config);
+            // Connect using your centralized environment variable
+            const pool = await sql.connect(process.env.SQL_CONNECTION);
+
+            // 1. CHECK OTP (using GETUTCDATE for timezone consistency)
+            const checkQuery = `
+                SELECT 1 
+                FROM SignupOTPs 
+                WHERE Email = @email AND OTP = @otp AND ExpiresAt > GETUTCDATE()
+            `;
             
-            connection.on('connect', async (err) => {
-                if (err) return resolve({ status: 500, body: "DB Connection Error" });
+            const checkResult = await pool.request()
+                .input('email', sql.VarChar, email)
+                .input('otp', sql.VarChar, otp)
+                .query(checkQuery);
 
-                // 1. Check OTP (using GETUTCDATE for timezone fix)
-                const checkQuery = `SELECT 1 FROM SignupOTPs WHERE Email = @email AND OTP = @otp AND ExpiresAt > GETUTCDATE()`;
+            if (checkResult.recordset.length === 0) {
+                return { status: 400, body: "Invalid or expired OTP." };
+            }
+
+            // 2. HASH PASSWORD
+            const hashedPassword = await bcrypt.hash(password, 10);
+
+            // 3. INSERT USER & GET NEW ID
+            const registerQuery = `
+                INSERT INTO Users (FullName, Email, PasswordHash, Role, IsVerified) 
+                OUTPUT INSERTED.UserId
+                VALUES (@name, @email, @pass, @role, 1);
+            `;
+
+            let newUserId;
+            try {
+                const regResult = await pool.request()
+                    .input('name', sql.VarChar, fullName)
+                    .input('email', sql.VarChar, email)
+                    .input('pass', sql.VarChar, hashedPassword)
+                    .input('role', sql.VarChar, role)
+                    .query(registerQuery);
                 
-                const checkReq = new Request(checkQuery, async (err, rowCount) => {
-                    if (err || rowCount === 0) {
-                        connection.close();
-                        return resolve({ status: 400, body: "Invalid or expired OTP." });
-                    }
+                newUserId = regResult.recordset[0].UserId;
+            } catch (regErr) {
+                if (regErr.message.includes('Violation of UNIQUE KEY')) {
+                    return { status: 409, body: "Email already registered." };
+                }
+                throw regErr;
+            }
 
-                    // 2. Hash Password
-                    const hashedPassword = await bcrypt.hash(password, 10);
+            // 4. IF SELLER, CREATE SELLER PROFILE
+            if (role === 'SELLER') {
+                const sellerQuery = `
+                    INSERT INTO Sellers (UserId, StoreName, IsApproved) 
+                    VALUES (@uId, @sName, 0)
+                `;
+                await pool.request()
+                    .input('uId', sql.Int, newUserId)
+                    .input('sName', sql.VarChar, storeName)
+                    .query(sellerQuery);
+            }
 
-                    // 3. Insert User
-                    const registerQuery = `
-                        INSERT INTO Users (FullName, Email, PasswordHash, Role, IsVerified) 
-                        OUTPUT INSERTED.UserId
-                        VALUES (@name, @email, @pass, @role, 1);
-                    `;
+            // 5. CLEANUP: DELETE THE USED OTP
+            await pool.request()
+                .input('email', sql.VarChar, email)
+                .query(`DELETE FROM SignupOTPs WHERE Email = @email`);
 
-                    let newUserId = null;
+            // 6. RETURN SUCCESS WITH AUTO-LOGIN DATA
+            return { 
+                status: 200, 
+                jsonBody: {
+                    message: "Verified & Registered!",
+                    userId: newUserId,
+                    name: fullName,
+                    role: role,
+                    token: "dummy-jwt-token" // Ready for your JWT implementation later
+                } 
+            };
 
-                    const regReq = new Request(registerQuery, (err) => {
-                        if (err) {
-                            connection.close();
-                            if (err.message.includes('Violation of UNIQUE KEY')) {
-                                return resolve({ status: 409, body: "Email already registered." });
-                            }
-                            return resolve({ status: 500, body: "Registration DB Error." });
-                        }
-
-                        if (!newUserId) {
-                            connection.close();
-                            return resolve({ status: 500, body: "Registration failed: No ID returned." });
-                        }
-
-                        // --- CHANGE 1: PREPARE USER DATA FOR AUTO-LOGIN ---
-                        const userData = { 
-                            userId: newUserId, 
-                            name: fullName, 
-                            role: role 
-                        };
-
-                        // 4. If Seller, create Seller Profile
-                        if (role === 'SELLER') {
-                            const sellerQuery = `INSERT INTO Sellers (UserId, StoreName, IsApproved) VALUES (@uId, @sName, 0)`;
-                            const sellerReq = new Request(sellerQuery, (err) => {
-                                if (err) {
-                                    connection.close();
-                                    return resolve({ status: 500, body: "Failed to create Seller profile." });
-                                }
-                                // PASS userData HERE
-                                finishRequest(connection, email, resolve, userData);
-                            });
-                            sellerReq.addParameter('uId', TYPES.Int, newUserId);
-                            sellerReq.addParameter('sName', TYPES.VarChar, storeName);
-                            connection.execSql(sellerReq);
-                        } else {
-                            // PASS userData HERE
-                            finishRequest(connection, email, resolve, userData);
-                        }
-                    });
-
-                    // Capture the New UserId
-                    regReq.on('row', (columns) => {
-                        newUserId = columns[0].value;
-                    });
-
-                    regReq.addParameter('name', TYPES.VarChar, fullName);
-                    regReq.addParameter('email', TYPES.VarChar, email);
-                    regReq.addParameter('pass', TYPES.VarChar, hashedPassword);
-                    regReq.addParameter('role', TYPES.VarChar, role);
-                    
-                    connection.execSql(regReq);
-                });
-
-                checkReq.addParameter('email', TYPES.VarChar, email);
-                checkReq.addParameter('otp', TYPES.VarChar, otp);
-                connection.execSql(checkReq);
-            });
-            connection.connect();
-        });
+        } catch (error) {
+            context.error("VerifyOTP Error:", error);
+            return { status: 500, body: "Server Error: " + error.message };
+        }
     }
 });
-
-// --- CHANGE 2: UPDATE HELPER TO RETURN JSON ---
-function finishRequest(connection, email, resolve, userData) {
-    const deleteOtpQuery = `DELETE FROM SignupOTPs WHERE Email = @email`;
-    const delReq = new Request(deleteOtpQuery, () => {
-        connection.close();
-        
-        // Return JSON with User Data (Auto-Login)
-        resolve({ 
-            status: 200, 
-            jsonBody: {
-                message: "Verified & Registered!",
-                userId: userData.userId,
-                name: userData.name,
-                role: userData.role,
-                token: "dummy-jwt-token" 
-            } 
-        });
-    });
-    delReq.addParameter('email', TYPES.VarChar, email);
-    connection.execSql(delReq);
-}
