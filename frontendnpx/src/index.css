@@ -1,5 +1,19 @@
-body {
+/* 🔥 NEW: Global safeguards to prevent the grey gap and horizontal scrolling */
+html, body, #root {
   margin: 0;
+  padding: 0;
+  width: 100%;
+  max-width: 100vw;
+  overflow-x: hidden;
+  background-color: #f1f3f6; /* Native app background color */
+}
+
+/* 🔥 NEW: Forces padding to stay INSIDE the width of an element */
+* {
+  box-sizing: border-box;
+}
+
+body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
     'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
     sans-serif;

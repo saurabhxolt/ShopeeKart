@@ -1,37 +1,45 @@
 const { app } = require('@azure/functions');
-const { Connection, Request, TYPES } = require('tedious');
-
-const config = {
-    server: 'localhost', 
-    authentication: { type: 'default', options: { userName: 'ecommerce_user', password: 'password123' } },
-    options: { encrypt: false, database: 'EcommerceDB', trustServerCertificate: true }
-};
+const sql = require('mssql');
 
 app.http('DeleteProduct', {
     methods: ['DELETE'],
     authLevel: 'anonymous',
     handler: async (request, context) => {
-        const productId = request.query.get('productId');
-        const userId = request.query.get('userId');
+        try {
+            const productId = request.query.get('productId');
+            const userId = request.query.get('userId');
 
-        const query = `
-            DELETE p FROM Products p
-            JOIN Sellers s ON p.SellerId = s.SellerId
-            WHERE p.ProductId = @pId AND s.UserId = @uId
-        `;
+            if (!productId || !userId) {
+                return { status: 400, body: "Missing productId or userId" };
+            }
 
-        return new Promise((resolve) => {
-            const connection = new Connection(config);
-            connection.on('connect', (err) => {
-                const req = new Request(query, (err) => { 
-                    connection.close(); 
-                    resolve({ status: 200, body: "Deleted" }); 
-                });
-                req.addParameter('pId', TYPES.Int, productId);
-                req.addParameter('uId', TYPES.Int, userId);
-                connection.execSql(req);
-            });
-            connection.connect();
-        });
+            // Connect using your centralized environment variable
+            const pool = await sql.connect(process.env.SQL_CONNECTION);
+
+            // 🔥 THE FIX: Soft Delete using UPDATE instead of a hard DELETE
+            const query = `
+                UPDATE p
+                SET p.IsDeleted = 1
+                FROM Products p
+                JOIN Sellers s ON p.SellerId = s.SellerId
+                WHERE p.ProductId = @pId AND s.UserId = @uId
+            `;
+
+            const result = await pool.request()
+                .input('pId', sql.Int, parseInt(productId))
+                .input('uId', sql.Int, parseInt(userId))
+                .query(query);
+
+            // result.rowsAffected[0] tells us how many rows were actually updated
+            if (result.rowsAffected[0] === 0) {
+                return { status: 403, body: "Unauthorized or Product not found" };
+            }
+
+            return { status: 200, body: "Moved to trash successfully" };
+
+        } catch (error) {
+            context.error("DeleteProduct Error:", error);
+            return { status: 500, body: "Failed to move to trash: " + error.message };
+        }
     }
 });

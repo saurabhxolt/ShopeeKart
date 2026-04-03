@@ -1,13 +1,8 @@
 const { app } = require('@azure/functions');
-const { Connection, Request, TYPES } = require('tedious');
+const sql = require('mssql');
 const nodemailer = require('nodemailer');
 
-const config = {
-    server: 'localhost', 
-    authentication: { type: 'default', options: { userName: 'ecommerce_user', password: 'password123' } },
-    options: { encrypt: false, database: 'EcommerceDB', trustServerCertificate: true }
-};
-
+// Define transporter once outside the handler
 const transporter = nodemailer.createTransport({
     service: 'gmail',
     auth: { user: 'saurabhsonwal24@gmail.com', pass: 'siwhxzyqlmxeoskv' },
@@ -17,84 +12,63 @@ const transporter = nodemailer.createTransport({
 app.http('SendOTP', {
     methods: ['POST'],
     authLevel: 'anonymous',
-    handler: async (request) => {
-        // 1. GET THE isReset FLAG
-        const { email, isReset } = await request.json();
+    handler: async (request, context) => {
+        try {
+            const { email, isReset } = await request.json();
 
-        return new Promise((resolve) => {
-            const connection = new Connection(config);
-            connection.on('connect', async (err) => {
-                if (err) return resolve({ status: 500, body: "DB Error" });
+            if (!email) {
+                return { status: 400, body: "Email is required" };
+            }
 
-                // --- HELPER FUNCTION: GENERATE & SEND OTP ---
-                // We define this here so we can call it from two different places below
-                const sendOtpLogic = () => {
-                    const otp = Math.floor(100000 + Math.random() * 900000).toString();
-                    
-                    const query = `
-                        IF EXISTS (SELECT 1 FROM SignupOTPs WHERE Email = @email)
-                            UPDATE SignupOTPs SET OTP = @otp, ExpiresAt = DATEADD(minute, 10, GETUTCDATE()) WHERE Email = @email
-                        ELSE
-                            INSERT INTO SignupOTPs (Email, OTP, ExpiresAt) VALUES (@email, @otp, DATEADD(minute, 10, GETUTCDATE()))
-                    `;
+            // Connect to SQL using your environment variable
+            const pool = await sql.connect(process.env.SQL_CONNECTION);
 
-                    const saveReq = new Request(query, async (err) => {
-                        connection.close();
-                        if (err) return resolve({ status: 500, body: "SQL Error" });
+            // 1. CHECK IF USER EXISTS
+            const userCheck = await pool.request()
+                .input('email', sql.VarChar, email)
+                .query(`SELECT 1 FROM Users WHERE Email = @email`);
 
-                        try {
-                            await transporter.sendMail({
-                                from: '"My Marketplace" <saurabhsonwal24@gmail.com>',
-                                to: email,
-                                subject: isReset ? 'Reset Your Password' : 'Your Verification Code',
-                                text: `Your code is: ${otp}. It expires in 10 minutes.`
-                            });
-                            resolve({ status: 200, body: "OTP Sent" });
-                        } catch (mailErr) {
-                            console.error(mailErr);
-                            resolve({ status: 500, body: "Email failed." });
-                        }
-                    });
+            const userExists = userCheck.recordset.length > 0;
 
-                    saveReq.addParameter('email', TYPES.VarChar, email);
-                    saveReq.addParameter('otp', TYPES.VarChar, otp);
-                    connection.execSql(saveReq);
-                };
+            // CASE A: Registering (!isReset) but email is already taken
+            if (!isReset && userExists) {
+                return { status: 409, body: "Email already registered. Please login." };
+            }
 
-                // --- 2. LOGIC BRANCHING ---
-                
-                // CASE A: REGISTERING (isReset is false/undefined) -> Block existing users
-                if (!isReset) {
-                    const checkUserQuery = `SELECT 1 FROM Users WHERE Email = @email`;
-                    const checkReq = new Request(checkUserQuery, (err, rowCount) => {
-                        if (rowCount > 0) {
-                            connection.close();
-                            return resolve({ status: 409, body: "Email already registered. Please login." });
-                        }
-                        // User is new, proceed
-                        sendOtpLogic();
-                    });
-                    checkReq.addParameter('email', TYPES.VarChar, email);
-                    connection.execSql(checkReq);
-                } 
-                
-                // CASE B: RESET PASSWORD (isReset is true) -> Must be an existing user
-                else {
-                    const checkUserQuery = `SELECT 1 FROM Users WHERE Email = @email`;
-                    const checkReq = new Request(checkUserQuery, (err, rowCount) => {
-                        if (rowCount === 0) {
-                            connection.close();
-                            // Don't let people reset passwords for emails that don't exist!
-                            return resolve({ status: 404, body: "Email not found. Please register." });
-                        }
-                        // User exists, allow reset OTP
-                        sendOtpLogic();
-                    });
-                    checkReq.addParameter('email', TYPES.VarChar, email);
-                    connection.execSql(checkReq);
-                }
+            // CASE B: Resetting password (isReset) but email doesn't exist
+            if (isReset && !userExists) {
+                return { status: 404, body: "Email not found. Please register." };
+            }
+
+            // 2. GENERATE OTP
+            const otp = Math.floor(100000 + Math.random() * 900000).toString();
+
+            // 3. UPSERT OTP (Insert or Update if exists)
+            const upsertQuery = `
+                IF EXISTS (SELECT 1 FROM SignupOTPs WHERE Email = @email)
+                    UPDATE SignupOTPs SET OTP = @otp, ExpiresAt = DATEADD(minute, 10, GETUTCDATE()) WHERE Email = @email
+                ELSE
+                    INSERT INTO SignupOTPs (Email, OTP, ExpiresAt) VALUES (@email, @otp, DATEADD(minute, 10, GETUTCDATE()))
+            `;
+
+            await pool.request()
+                .input('email', sql.VarChar, email)
+                .input('otp', sql.VarChar, otp)
+                .query(upsertQuery);
+
+            // 4. SEND EMAIL
+            await transporter.sendMail({
+                from: '"ArivKart Support" <saurabhsonwal24@gmail.com>',
+                to: email,
+                subject: isReset ? 'Reset Your Password' : 'Your Verification Code',
+                text: `Your code is: ${otp}. It expires in 10 minutes.`
             });
-            connection.connect();
-        });
+
+            return { status: 200, body: "OTP Sent" };
+
+        } catch (error) {
+            context.error("SendOTP Error:", error);
+            return { status: 500, body: "Internal Server Error: " + error.message };
+        }
     }
 });

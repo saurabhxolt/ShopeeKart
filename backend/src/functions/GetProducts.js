@@ -26,18 +26,21 @@ app.http('GetProducts', {
                     p.Brand as brand, 
                     p.Weight as weight, 
                     p.SKU as sku,
-                    p.SellerId as sellerId
+                    p.SellerId as sellerId,
+                    p.GSTPercentage as gstPercentage,   -- 🔥 Added Tax Columns
+                    p.HSNCode as hsnCode                -- 🔥 Added Tax Columns
                 FROM Products p
                 INNER JOIN Sellers s ON p.SellerId = s.SellerId
                 WHERE p.IsActive = 1 
                   AND s.IsApproved = 1
                   AND (p.IsArchived = 0 OR p.IsArchived IS NULL)
                   AND (s.IsDeleted = 0 OR s.IsDeleted IS NULL)
+                  AND (p.IsDeleted = 0 OR p.IsDeleted IS NULL) -- 🔥 THE BOUNCER: Blocks trashed items!
             `;
 
             const dbRequest = new sql.Request();
 
-            // 3. 🔥 FIX: Only add filter if it is a valid number!
+            // 3. Only add filter if it is a valid number!
             if (sellerIdParam && !isNaN(parsedSellerId)) {
                 query += ` AND p.SellerId = @sellerId`;
                 dbRequest.input('sellerId', sql.Int, parsedSellerId);

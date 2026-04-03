@@ -10,7 +10,7 @@ app.http('GetSellers', {
             
             const showAll = request.query.get('all') === 'true';
 
-            // 🔥 ADDED: s.VerificationDoc
+            // 🔥 ADDED: SubscriptionPlan and CommissionRate alongside your existing columns
             let query = `
                 SELECT 
                     s.SellerId, 
@@ -29,7 +29,9 @@ app.http('GetSellers', {
                     s.StoreBanner,
                     s.VerificationDoc,
                     u.FullName, 
-                    u.Email
+                    u.Email,
+                    ISNULL(s.SubscriptionPlan, 'Starter') AS SubscriptionPlan,
+                    ISNULL(s.CommissionRate, 0.10) AS CommissionRate
                 FROM Sellers s
                 INNER JOIN Users u ON s.UserId = u.UserId
             `;

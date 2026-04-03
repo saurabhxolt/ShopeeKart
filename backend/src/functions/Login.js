@@ -12,8 +12,7 @@ app.http('Login', {
             // 1. Connect to Database
             await sql.connect(process.env.SQL_CONNECTION);
             
-            // 2. Query User (Checking Role, Ban Status, and Soft Delete)
-            // 🔥 UPDATED: Added u.Email and u.Phone to the SELECT statement
+            // 2. Query User (Checking Role, Ban Status, Soft Delete, and Plan)
             const result = await sql.query`
                 SELECT 
                     u.UserId, 
@@ -23,11 +22,13 @@ app.http('Login', {
                     u.Phone,
                     u.PasswordHash, 
                     u.IsBanned, 
-                    s.IsApproved
+                    s.IsApproved,
+                    s.SubscriptionPlan, -- 🔥 NEW: Fetch the plan name
+                    s.CommissionRate    -- 🔥 NEW: Fetch the exact commission
                 FROM Users u
                 LEFT JOIN Sellers s ON u.UserId = s.UserId
                 WHERE u.Email = ${email} 
-                AND (u.IsDeleted = 0 OR u.IsDeleted IS NULL) -- <--- BLOCKS DELETED USERS
+                AND (u.IsDeleted = 0 OR u.IsDeleted IS NULL)
             `;
 
             const user = result.recordset[0];
@@ -38,16 +39,8 @@ app.http('Login', {
             }
 
             // 4. Security Checks
-            // Check if Banned
             if (user.IsBanned) {
                 return { status: 403, body: "🚫 Your account has been banned. Contact Admin." };
-            }
-
-            // Check Seller Approval (If they are a seller)
-            if (user.Role === 'SELLER') {
-                if (user.IsApproved === false || user.IsApproved === 0 || user.IsApproved === null) {
-                    return { status: 403, body: "⏳ Your seller account is pending approval." };
-                }
             }
 
             // 5. Verify Password
@@ -58,7 +51,6 @@ app.http('Login', {
             }
 
             // 6. Success - Return User Data
-            // 🔥 UPDATED: Now returning email and phone to the frontend
             return {
                 status: 200,
                 jsonBody: {
@@ -67,6 +59,10 @@ app.http('Login', {
                     name: user.FullName,
                     email: user.Email,
                     phone: user.Phone,
+                    isApproved: user.IsApproved === 1 || user.IsApproved === true,
+                    // 🔥 Pass the plan and rate to the frontend (with defaults if NULL)
+                    plan: user.SubscriptionPlan || 'Starter', 
+                    commissionRate: user.CommissionRate || 0.10,
                     token: "dummy-jwt-token" 
                 }
             };

@@ -1,13 +1,18 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import axios from 'axios';
 
-// --- IMPORT ALL EXTRACTED COMPONENTS ---
+// --- LAYOUT ---
+import Header from './components/layout/Header';
+import Footer from './components/layout/Footer';
+
+// --- PAGE COMPONENTS ---
 import AuthScreen from './pages/auth/AuthScreen';
 import AdminDashboard from './pages/admin/AdminDashboard';
 import SellerDashboard from './pages/seller/SellerDashboard';
 import BuyerShopList from './pages/buyer/BuyerShopList';
 import BuyerShopView from './pages/buyer/BuyerShopView';
 
+// --- MODAL COMPONENTS ---
 import CartSidebar from './components/cart/CartSidebar';
 import CheckoutModal from './components/cart/CheckoutModal';
 import BuyerOrdersModal from './components/orders/BuyerOrdersModal';
@@ -25,34 +30,130 @@ function App() {
   const [isVerifyingStock, setIsVerifyingStock] = useState(false); 
   const [isBuyerOrdersOpen, setIsBuyerOrdersOpen] = useState(false);
 
-  // Header & Account States
   const [globalSearch, setGlobalSearch] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  const [isSearching, setIsSearching] = useState(false);
+
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
   const [activeAccountTab, setActiveAccountTab] = useState('profile');
 
-  // 🔥 THE FIX: Separate Checkout Session State
   const [checkoutSession, setCheckoutSession] = useState({ items: [], isBuyNow: false });
 
-  // --- CART HANDLERS ---
-  const addToCart = async (product, isBuyNow = false) => {
-    const targetSellerId = selectedSeller.id || selectedSeller.SellerId;
+  // --- NEW: POLICY MODAL STATES ---
+  const [showTermsModal, setShowTermsModal] = useState(false);
+  const [activePolicyTitle, setActivePolicyTitle] = useState('');
+  const [policyContent, setPolicyContent] = useState(''); 
+  const [policyLang, setPolicyLang] = useState('en'); 
+
+  // 🔥 VIEWPORT DETECTION
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  // --- NEW: FETCH POLICY LOGIC ---
+  const openPolicyDocument = async (fileName, title) => {
+      setActivePolicyTitle(title);
+      setShowTermsModal(true);
+      setPolicyLang('en'); 
+      setPolicyContent('<p style="text-align:center; padding: 20px; color:#666;">Loading document...</p>');
+
+      try {
+          const response = await fetch(`/policies/${fileName}.html`);
+          if (!response.ok) throw new Error("Document not found");
+          const text = await response.text();
+          setPolicyContent(text);
+      } catch (error) {
+          setPolicyContent('<p style="color:red; padding: 20px;">Failed to load the policy document. Please ensure the lowercase "policies" folder exists in public/.</p>');
+      }
+  };
+
+  // ==========================================
+  // 🔥 SMART BATCHING TRAFFIC LOGGING
+  // ==========================================
+  const trafficQueue = useRef([]);
+
+  const flushLogs = useCallback(() => {
+      if (trafficQueue.current.length === 0) return;
+      
+      const payload = [...trafficQueue.current]; 
+      trafficQueue.current = []; 
+
+      fetch('http://localhost:7071/api/LogTrafficBatch', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+          keepalive: true 
+      }).catch(e => console.warn("Traffic batch log failed silently"));
+  }, []);
+
+  const logTraffic = useCallback((pageType, sellerId = null, productId = null) => {
+    if (!user) return;
     
-    // 🔥 THE FIX: Buy Now completely bypasses the cart state
+    trafficQueue.current.push({
+      userId: user.userId,
+      sellerId: sellerId,
+      productId: productId,
+      pageType: pageType,
+      deviceType: isMobile ? 'Mobile' : 'Desktop',
+      timestamp: new Date().toISOString()
+    });
+
+    if (trafficQueue.current.length >= 50) {
+        flushLogs();
+    }
+  }, [user, isMobile, flushLogs]);
+
+  useEffect(() => {
+      const handleUnload = () => flushLogs();
+      window.addEventListener('beforeunload', handleUnload);
+      return () => window.removeEventListener('beforeunload', handleUnload);
+  }, [flushLogs]);
+
+  // --- GLOBAL SEARCH EFFECT ---
+  useEffect(() => {
+    const delayDebounceFn = setTimeout(async () => {
+        if (globalSearch.trim().length > 1) {
+            setIsSearching(true);
+            try {
+                const res = await axios.get(`http://localhost:7071/api/GlobalSearch?q=${globalSearch}`);
+                searchResults(res.data);
+            } catch (err) {
+                console.error("Global search failed", err);
+            } finally {
+                setIsSearching(false);
+            }
+        } else {
+            setSearchResults([]);
+        }
+    }, 500); 
+
+    return () => clearTimeout(delayDebounceFn);
+  }, [globalSearch]);
+
+  // --- CART & CHECKOUT LOGIC ---
+  const addToCart = async (product, isBuyNow = false) => {
+    const targetSellerId = selectedSeller?.id || selectedSeller?.SellerId;
+    const targetSellerName = selectedSeller?.StoreName || selectedSeller?.name || "Unnamed Shop";
+    if(!targetSellerId) return;
+
     if (isBuyNow) {
-        const buyNowItem = { ...product, qty: 1, sellerId: targetSellerId, maxStock: product.qty };
+        const buyNowItem = { ...product, qty: 1, sellerId: targetSellerId, StoreName: targetSellerName, maxStock: product.qty };
         setCheckoutSession({ items: [buyNowItem], isBuyNow: true });
         setIsCartOpen(false); 
-        handleVerifyAndCheckout([buyNowItem]); // Verify only this item
+        handleVerifyAndCheckout([buyNowItem]); 
         return;
     }
 
     let currentCart = [...cartItems];
-
     if (currentCart.length > 0) {
         const existingSellerId = currentCart[0].sellerId;
         if (existingSellerId && existingSellerId !== targetSellerId) {
-            if (!window.confirm(`⚠️ Switch Shop?\n\nYour cart contains items from another shop.\n\nClick OK to CLEAR cart and add this item.\nClick Cancel to keep your existing cart.`)) return;
+            if (!window.confirm(`⚠️ Switch Shop?\n\nYour cart contains items from another shop.\n\nClick OK to CLEAR cart and add this item.`)) return;
             currentCart = []; 
         }
     }
@@ -65,7 +166,7 @@ function App() {
     if (existingIndex >= 0) {
         currentCart[existingIndex] = { ...currentCart[existingIndex], qty: currentCart[existingIndex].qty + 1 };
     } else {
-        currentCart.push({ ...product, qty: 1, sellerId: targetSellerId, maxStock: product.qty });
+        currentCart.push({ ...product, qty: 1, sellerId: targetSellerId, StoreName: targetSellerName, maxStock: product.qty });
     }
 
     setCartItems(currentCart);
@@ -77,11 +178,11 @@ function App() {
 
   const handleUpdateQty = (itemId, newQty) => {
       setCartItems(prev => prev.map(item => {
-          if (item.id === itemId) {
-              if (newQty < 1) return { ...item, qty: 0 };
-              if (newQty > (item.maxStock || 100)) return item;
-              return { ...item, qty: newQty };
-          }
+          if (Number(item.id) === Number(itemId)) {
+            if (newQty < 1) return { ...item, qty: 0 };
+            if (newQty > (item.maxStock || 100)) return item;
+            return { ...item, qty: newQty };
+        }
           return item;
       }).filter(item => item.qty > 0)); 
   };
@@ -94,17 +195,14 @@ function App() {
     try {
         const res = await axios.get(`http://localhost:7071/api/GetProducts?sellerId=${sellerId}`);
         const freshProducts = res.data;
-
         let errors = [];
         for (const checkoutItem of itemsToCheck) {
             const freshItem = freshProducts.find(p => p.id === checkoutItem.id);
             if (!freshItem) errors.push(`${checkoutItem.name} is no longer available.`);
-            else if (freshItem.qty < checkoutItem.qty) errors.push(`${checkoutItem.name}: You want ${checkoutItem.qty}, but only ${freshItem.qty} left.`);
+            else if (freshItem.qty < checkoutItem.qty) errors.push(`${checkoutItem.name}: Only ${freshItem.qty} left.`);
         }
-        
         setIsVerifyingStock(false);
         if (errors.length > 0) return alert("⚠️ Stock Issue:\n" + errors.join("\n"));
-
         setIsCartOpen(false);
         setIsCheckoutModalOpen(true);
     } catch (err) {
@@ -113,15 +211,16 @@ function App() {
     }
   };
 
-  const handlePlaceOrder = async (address, ratings) => {
+  const handlePlaceOrder = async (address, ratings, paymentMethod) => {
       setIsVerifyingStock(true); 
       try {
           const res = await axios.post('http://localhost:7071/api/PlaceOrder', {
               userId: user.userId, 
               address, 
-              cartItems: checkoutSession.items, // 🔥 Send session items
+              cartItems: checkoutSession.items, 
               totalAmount: checkoutSession.items.reduce((sum, item) => sum + (Number(item.price) * (item.qty || 1)), 0),
-              isBuyNow: checkoutSession.isBuyNow // 🔥 Pass flag to backend
+              isBuyNow: checkoutSession.isBuyNow,
+              paymentMethod: paymentMethod 
           });
           
           if (res.status === 200) {
@@ -132,14 +231,14 @@ function App() {
                       }).catch(e => console.error("Rating save failed", e));
                   }
               }
-              
-              // 🔥 THE FIX: Only clear the frontend cart if it was a Cart checkout!
-              if (!checkoutSession.isBuyNow) {
-                  setCartItems([]);              
-              }
-
+              if (!checkoutSession.isBuyNow) setCartItems([]);
               setRefreshKey(prev => prev + 1); 
-              return res.data.orderId; 
+              
+              // 🔥 FIX: Returning BOTH IDs in an object
+              return {
+                  orderId: res.data.orderId,
+                  transactionId: res.data.transactionId
+              }; 
           }
       } catch (err) {
           throw new Error(err.response?.data || err.message);
@@ -148,12 +247,12 @@ function App() {
       }
   };
 
-  // Handle Account Menu Clicks
   const openAccountFeature = (feature) => {
       setIsDropdownOpen(false);
       if (feature === 'orders') {
           setIsBuyerOrdersOpen(true);
       } else if (feature === 'logout') {
+          flushLogs(); 
           setUser(null); setSelectedSeller(null); setCartItems([]);
       } else {
           setActiveAccountTab(feature);
@@ -164,157 +263,142 @@ function App() {
   if (!user) return <AuthScreen onUserAuthenticated={setUser} />;
 
   return (
-    <div style={{ background: '#f1f3f6', minHeight: '100vh', paddingBottom: '50px' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', background: '#f1f3f6', width: '100%', overflowX: 'hidden' }}>
       
-      {/* 🔥 THE ROLE-BASED HEADER */}
-      <header style={{ background: 'white', padding: '12px 60px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #e0e0e0', position: 'sticky', top: 0, zIndex: 1000, boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}>
-          
-          <div onClick={() => setSelectedSeller(null)} style={{ fontSize: '22px', fontWeight: 'bold', color: '#2874f0', fontStyle: 'italic', cursor: 'pointer', letterSpacing: '1px' }}>
-              MyMarket {user.role !== 'BUYER' && <span style={{fontSize:'14px', color:'#dc3545', textTransform:'uppercase'}}>({user.role})</span>}
-          </div>
+      {/* --- CSS FOR POLICY LANGUAGES --- */}
+      <style>{`
+        .policy-wrapper .lang-en, .policy-wrapper .lang-hi, .policy-wrapper .lang-mr { display: none; }
+        .policy-wrapper.show-en .lang-en { display: block; }
+        .policy-wrapper.show-hi .lang-hi { display: block; }
+        .policy-wrapper.show-mr .lang-mr { display: block; }
+      `}</style>
 
-          {/* Search Bar (Only Visible to Buyers) */}
-          {user.role === 'BUYER' ? (
-              <div style={{ flex: 1, maxWidth: '600px', margin: '0 40px', position: 'relative' }}>
-                  <span style={{ position: 'absolute', left: '15px', top: '10px', color: '#2874f0', fontSize: '18px' }}>⚲</span>
-                  <input 
-                      type="text" placeholder="Search for Products, Brands and More" 
-                      value={globalSearch} onChange={(e) => setGlobalSearch(e.target.value)}
-                      style={{ width: '100%', padding: '10px 15px 10px 45px', borderRadius: '8px', border: '1px solid #2874f0', outline: 'none', fontSize: '15px', background: '#f0f5ff', color: '#333', boxSizing: 'border-box' }} 
-                  />
-              </div>
-          ) : <div style={{ flex: 1 }}></div>}
-
-          {/* Right Navigation */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '35px' }}>
-              
-              {/* Dynamic Account Dropdown */}
-              <div 
-                  onMouseEnter={() => setIsDropdownOpen(true)} onMouseLeave={() => setIsDropdownOpen(false)}
-                  style={{ position: 'relative', cursor: 'pointer', height: '40px', display: 'flex', alignItems: 'center' }}
-              >
-                  <div style={{ fontWeight: '500', fontSize: '16px', color: '#212121', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span style={{ fontSize: '20px' }}>👤</span> {user.name} <span style={{ fontSize: '12px', color: '#878787', transition: 'transform 0.2s', transform: isDropdownOpen ? 'rotate(180deg)' : 'rotate(0deg)' }}>▼</span>
-                  </div>
-
-                  {isDropdownOpen && (
-                      <div style={{ position: 'absolute', top: '100%', left: '50%', transform: 'translateX(-50%)', width: '250px', background: 'white', color: '#333', boxShadow: '0 4px 16px rgba(0,0,0,0.1)', borderRadius: '4px', zIndex: 5000, overflow: 'hidden', border: '1px solid #e0e0e0', marginTop: '10px' }}>
-                          <div style={{ position: 'absolute', top: '-6px', left: '50%', marginLeft: '-6px', width: '12px', height: '12px', background: 'white', transform: 'rotate(45deg)', borderLeft: '1px solid #e0e0e0', borderTop: '1px solid #e0e0e0' }}></div>
-                          <div style={{ padding: '15px', background: '#f8f9fa', borderBottom: '1px solid #eee', fontWeight: 'bold', fontSize: '13px', color: '#878787', textTransform: 'uppercase' }}>Your Account</div>
-                          <style>{`.dropdown-item { padding: 14px 20px; font-size: 15px; cursor: pointer; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid #f0f0f0; transition: background 0.2s; color: #212121; } .dropdown-item:hover { background: #f0f5ff; color: #2874f0; }`}</style>
-                          
-                          {/* BUYER MENU */}
-                          {user.role === 'BUYER' && (
-                              <>
-                                  <div className="dropdown-item" onClick={() => openAccountFeature('profile')}>👤 My Profile</div>
-                                  <div className="dropdown-item" onClick={() => openAccountFeature('orders')}>📦 Orders</div>
-                                  <div className="dropdown-item" onClick={() => openAccountFeature('coupons')}>🎫 Coupons</div>
-                                  <div className="dropdown-item" onClick={() => openAccountFeature('wallet')}>💳 Saved Cards & Wallet</div>
-                                  <div className="dropdown-item" onClick={() => openAccountFeature('addresses')}>📍 Saved Addresses</div>
-                                  <div className="dropdown-item" onClick={() => openAccountFeature('wishlist')}>❤️ Wishlist</div>
-                                  <div className="dropdown-item" onClick={() => openAccountFeature('notifications')}>🔔 Notifications</div>
-                              </>
-                          )}
-
-                          {/* SELLER MENU */}
-                          {user.role === 'SELLER' && (
-                              <>
-                                  <div className="dropdown-item" onClick={() => setIsDropdownOpen(false)}>🏪 Shop Dashboard</div>
-                                  <div className="dropdown-item" onClick={() => setIsDropdownOpen(false)}>⚙️ Shop Settings</div>
-                              </>
-                          )}
-
-                          {/* ADMIN MENU */}
-                          {user.role === 'ADMIN' && (
-                              <>
-                                  <div className="dropdown-item" onClick={() => setIsDropdownOpen(false)}>📊 Admin Panel</div>
-                                  <div className="dropdown-item" onClick={() => setIsDropdownOpen(false)}>⚙️ System Settings</div>
-                              </>
-                          )}
-
-                          <div className="dropdown-item" onClick={() => openAccountFeature('logout')} style={{ borderTop: '2px solid #eee', color: '#dc3545' }}>🚪 Logout</div>
-                      </div>
-                  )}
-              </div>
-
-              {/* Cart Button (Only for Buyers) */}
-              {user.role === 'BUYER' && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontWeight: '500', fontSize: '16px', color: '#212121' }} onClick={() => setIsCartOpen(true)}>
-                      <span style={{ fontSize: '22px', position: 'relative' }}>🛒
-                          {cartItems.length > 0 && <span style={{ position: 'absolute', top: '-8px', right: '-10px', background: '#ff6161', color: 'white', borderRadius: '50%', padding: '2px 6px', fontSize: '11px', fontWeight: 'bold', border: '2px solid white' }}>{cartItems.reduce((acc, item) => acc + (item.qty || 1), 0)}</span>}
-                      </span>
-                      Cart
-                  </div>
-              )}
-          </div>
-      </header>
+      <Header 
+        user={user}
+        selectedSeller={selectedSeller}
+        onLogoClick={() => { setSelectedSeller(null); setGlobalSearch(''); }}
+        globalSearch={globalSearch}
+        setGlobalSearch={setGlobalSearch}
+        isDropdownOpen={isDropdownOpen}
+        setIsDropdownOpen={setIsDropdownOpen}
+        openAccountFeature={openAccountFeature}
+        cartItems={cartItems}
+        onOpenCart={() => setIsCartOpen(true)}
+        hideSearch={!!selectedSeller || isAccountModalOpen || isCheckoutModalOpen || isBuyerOrdersOpen}
+      />
       
-      {/* MAIN CONTENT AREA */}
-      <div style={{ padding: '40px' }}>
+      <div style={{ padding: isMobile ? '0' : '40px', flex: 1, width: '100%', boxSizing: 'border-box' }}>
           {user.role === 'ADMIN' && <AdminDashboard user={user} />}
           {user.role === 'SELLER' && <SellerDashboard user={user} />}
-          {user.role === 'BUYER' && !selectedSeller && <BuyerShopList onEnterShop={(shop) => setSelectedSeller(shop)} refreshKey={refreshKey} />}
-          {user.role === 'BUYER' && selectedSeller && (
-              <BuyerShopView 
-                  user={user} 
-                  selectedSeller={selectedSeller} 
-                  onBack={() => {
-                      setSelectedSeller(null);
-                      setTargetProductId(null); // 🔥 NEW: Clear it when leaving shop
-                  }} 
-                  addToCart={addToCart} 
-                  refreshKey={refreshKey} 
-                  targetProductId={targetProductId} // 🔥 NEW: Pass it to the shop
-              />
+          
+          {user.role === 'BUYER' && (
+              <>
+                {globalSearch.trim().length > 1 ? (
+                    <div style={{ padding: isMobile ? '10px' : '0' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+                            <h2 style={{ margin: 0, color: '#212121', fontSize: isMobile ? '18px' : '24px' }}>
+                                {isSearching ? '🔍 Searching...' : `Found ${searchResults.length} items for "${globalSearch}"`}
+                            </h2>
+                            <button onClick={() => setGlobalSearch('')} style={{ background: 'white', border: '1px solid #ccc', padding: '8px 15px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>✕ Clear</button>
+                        </div>
+
+                        {searchResults.length === 0 && !isSearching ? (
+                            <div style={{ textAlign: 'center', padding: '60px', background: 'white', borderRadius: '8px' }}>
+                                <div style={{ fontSize: '50px', marginBottom: '10px' }}>😕</div>
+                                <h3>No products found.</h3>
+                                <p style={{ color: '#878787' }}>Try different keywords or check your spelling.</p>
+                            </div>
+                        ) : (
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', justifyContent: isMobile ? 'space-between' : 'flex-start' }}>
+                                {searchResults.map(product => {
+                                    let imgs = [];
+                                    try { imgs = JSON.parse(product.ImageUrl); } catch(e) { imgs = [product.ImageUrl]; }
+                                    
+                                    return (
+                                        <div 
+                                            key={product.id} 
+                                            onClick={() => {
+                                                setGlobalSearch(''); 
+                                                setTargetProductId(product.id);
+                                                setSelectedSeller({ id: product.sellerId, StoreName: product.StoreName });
+                                            }}
+                                            style={{ background: 'white', padding: '15px', borderRadius: '8px', width: isMobile ? 'calc(50% - 5px)' : '220px', boxSizing: 'border-box', cursor: 'pointer', boxShadow: '0 2px 8px rgba(0,0,0,0.1)', transition: 'transform 0.2s' }}
+                                            onMouseOver={(e) => !isMobile && (e.currentTarget.style.transform = 'translateY(-5px)')}
+                                            onMouseOut={(e) => e.currentTarget.style.transform = 'translateY(0)'}
+                                        >
+                                            <div style={{ height: isMobile ? '120px' : '180px', marginBottom: '10px' }}>
+                                                <img src={imgs[0]} style={{ width: '100%', height: '100%', objectFit: 'contain' }} alt="" />
+                                            </div>
+                                            <div style={{ fontWeight: 'bold', fontSize: '14px', height: '40px', overflow: 'hidden' }}>{product.Name}</div>
+                                            <div style={{ color: '#2874f0', fontSize: '18px', fontWeight: 'bold', margin: '10px 0' }}>₹{product.Price}</div>
+                                            <div style={{ fontSize: '12px', color: '#878787', borderTop: '1px solid #eee', paddingTop: '10px' }}>
+                                                🏪 Store: <span style={{ color: '#212121', fontWeight: '500' }}>{product.StoreName}</span>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </div>
+                ) : (
+                    !selectedSeller ? (
+                        <BuyerShopList onEnterShop={(shop) => setSelectedSeller(shop)} refreshKey={refreshKey} />
+                    ) : (
+                        <BuyerShopView
+                            user={user}
+                            selectedSeller={selectedSeller}
+                            onBack={() => { setSelectedSeller(null); setTargetProductId(null); }}
+                            addToCart={addToCart}
+                            refreshKey={refreshKey}
+                            targetProductId={targetProductId}
+                            setTargetProductId={setTargetProductId}
+                            cartItems={cartItems}
+                            onUpdateQty={handleUpdateQty}
+                            logTraffic={logTraffic}
+                        />
+                    )
+                )}
+              </>
           )}    
       </div>
 
-      {/* MODALS */}
-      <CartSidebar 
-          isOpen={isCartOpen} 
-          onClose={() => setIsCartOpen(false)} 
-          cartItems={cartItems} 
-          onRemove={removeFromCart} 
-          // 🔥 THE FIX: Checking out from the Cart loads the cart items into the session
-          onCheckout={() => {
-              setCheckoutSession({ items: cartItems, isBuyNow: false });
-              handleVerifyAndCheckout(cartItems);
-          }} 
-          isVerifyingStock={isVerifyingStock} 
-          onUpdateQty={handleUpdateQty} 
-      />
-      
-      {/* 🔥 THE FIX: Checkout modal now safely reads from checkoutSession, not cartItems */}
-      <CheckoutModal 
-          isOpen={isCheckoutModalOpen} 
-          onClose={() => setIsCheckoutModalOpen(false)} 
-          cartItems={checkoutSession.items} 
-          cartTotal={checkoutSession.items.reduce((sum, item) => sum + (Number(item.price) * (item.qty || 1)), 0)} 
-          onConfirmOrder={handlePlaceOrder} 
-          userId={user?.userId} 
-          
-          // 🔥 NEW: Passes the logic to open the Orders screen
-          onViewOrders={() => {
-              setIsCheckoutModalOpen(false);
-              setIsBuyerOrdersOpen(true);
-          }}
-      />
+      {/* 🔥 FIXED: Passing the policy function to Footer */}
+      <Footer user={user} onOpenPolicy={openPolicyDocument} />
+
+      {/* --- GLOBAL POLICY MODAL (Appears on any page) --- */}
+      {showTermsModal && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 3000, padding: '15px' }}>
+          <div style={{ backgroundColor: 'white', padding: isMobile ? '20px' : '30px', borderRadius: '12px', width: '95%', maxWidth: '600px', maxHeight: '90vh', display: 'flex', flexDirection: 'column', position: 'relative', boxShadow: '0 10px 30px rgba(0,0,0,0.3)' }}>
+            
+            <button onClick={() => setShowTermsModal(false)} style={{ position: 'absolute', top: '10px', right: '15px', border: 'none', background: 'none', fontSize: '28px', cursor: 'pointer', color: '#666' }}>&times;</button>
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', borderBottom: '1px solid #eee', paddingBottom: '15px', marginBottom: '15px' }}>
+                <h2 style={{ margin: 0, color: '#333', fontSize: '20px' }}>{activePolicyTitle}</h2>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                    <button onClick={() => setPolicyLang('en')} style={{ padding: '6px 12px', cursor: 'pointer', border: '1px solid #2874f0', background: policyLang === 'en' ? '#2874f0' : 'white', color: policyLang === 'en' ? 'white' : '#2874f0', borderRadius: '4px', fontSize: '12px', fontWeight: 'bold' }}>English</button>
+                    <button onClick={() => setPolicyLang('hi')} style={{ padding: '6px 12px', cursor: 'pointer', border: '1px solid #2874f0', background: policyLang === 'hi' ? '#2874f0' : 'white', color: policyLang === 'hi' ? 'white' : '#2874f0', borderRadius: '4px', fontSize: '12px', fontWeight: 'bold' }}>हिंदी</button>
+                    <button onClick={() => setPolicyLang('mr')} style={{ padding: '6px 12px', cursor: 'pointer', border: '1px solid #2874f0', background: policyLang === 'mr' ? '#2874f0' : 'white', color: policyLang === 'mr' ? 'white' : '#2874f0', borderRadius: '4px', fontSize: '12px', fontWeight: 'bold' }}>मराठी</button>
+                </div>
+            </div>
+
+            <div 
+                className={`policy-wrapper show-${policyLang}`}
+                style={{ flex: 1, fontSize: '14px', lineHeight: '1.6', color: '#444', overflowY: 'auto', maxHeight: '55vh', paddingRight: '10px', marginBottom: '15px' }}
+                dangerouslySetInnerHTML={{ __html: policyContent }} 
+            />
+            
+            <button onClick={() => setShowTermsModal(false)} style={{ width: '100%', padding: '14px', background: '#10b981', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '15px' }}>
+                Close
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* OTHER MODALS */}
+      <CartSidebar isOpen={isCartOpen} onClose={() => setIsCartOpen(false)} cartItems={cartItems} onRemove={removeFromCart} onCheckout={() => { setCheckoutSession({ items: cartItems, isBuyNow: false }); handleVerifyAndCheckout(cartItems); }} isVerifyingStock={isVerifyingStock} onUpdateQty={handleUpdateQty} onProductClick={(sellerId, storeName, productId) => { setIsCartOpen(false); setTargetProductId(productId); setSelectedSeller({ id: sellerId, StoreName: storeName }); }} />
+      <CheckoutModal isOpen={isCheckoutModalOpen} onClose={() => setIsCheckoutModalOpen(false)} cartItems={checkoutSession.items} cartTotal={checkoutSession.items.reduce((sum, item) => sum + (Number(item.price) * (item.qty || 1)), 0)} onConfirmOrder={handlePlaceOrder} userId={user?.userId} onViewOrders={() => { setIsCheckoutModalOpen(false); setIsBuyerOrdersOpen(true); }} />
       <BuyerOrdersModal isOpen={isBuyerOrdersOpen} onClose={() => setIsBuyerOrdersOpen(false)} userId={user?.userId} />
-      <BuyerAccountModal 
-          isOpen={isAccountModalOpen} 
-          onClose={() => setIsAccountModalOpen(false)} 
-          activeTab={activeAccountTab} 
-          setActiveTab={setActiveAccountTab} 
-          user={user} 
-          onUpdateUser={setUser} 
-          
-          // 🔥 NEW: This function catches the click from the Wishlist and transports the user!
-          onVisitShop={(sellerId, storeName, productId) => {
-              setIsAccountModalOpen(false); // Close the modal
-              setTargetProductId(productId);
-              setSelectedSeller({ id: sellerId, StoreName: storeName }); // Open the shop!
-          }}
-      />
+      <BuyerAccountModal isOpen={isAccountModalOpen} onClose={() => setIsAccountModalOpen(false)} activeTab={activeAccountTab} setActiveTab={setActiveAccountTab} user={user} onUpdateUser={setUser} onVisitShop={(sellerId, storeName, productId) => { setIsAccountModalOpen(false); setTargetProductId(productId); setSelectedSeller({ id: sellerId, StoreName: storeName }); }} />
     </div>
   );
 }
