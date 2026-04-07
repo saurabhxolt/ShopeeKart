@@ -1,7 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import { parseImages } from '../../utils/imageHelpers';
 
-// 🔥 ADDED: onProductClick prop
+// 🔥 Safe image extractor to prevent double-parse crashes in the cart
+const getFirstImage = (imgProp) => {
+  if (!imgProp) return 'https://via.placeholder.com/70';
+  if (Array.isArray(imgProp)) return imgProp[0]; 
+  try {
+    const parsed = parseImages(imgProp);
+    return parsed && parsed.length > 0 ? parsed[0] : imgProp;
+  } catch (e) {
+    return typeof imgProp === 'string' ? imgProp : 'https://via.placeholder.com/70';
+  }
+};
+
 const CartSidebar = ({ isOpen, onClose, cartItems, onRemove, onCheckout, isVerifyingStock, onUpdateQty, onProductClick }) => {
   const total = cartItems.reduce((sum, item) => sum + (Number(item.price) * (item.qty || 1)), 0);
 
@@ -38,27 +49,38 @@ const CartSidebar = ({ isOpen, onClose, cartItems, onRemove, onCheckout, isVerif
               
               const maxLimit = item.maxStock || 100;
               const isMaxReached = item.qty >= maxLimit;
+              
+              const itemKey = `${item.id}-${item.variationId || 'base'}-${idx}`;
 
               return (
-                <div key={idx} style={{ background: 'white', borderRadius: '8px', display: 'flex', gap: '15px', marginBottom: '15px', padding: '15px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', boxSizing: 'border-box', position: 'relative' }}>
+                <div key={itemKey} style={{ background: 'white', borderRadius: '8px', display: 'flex', gap: '15px', marginBottom: '15px', padding: '15px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', boxSizing: 'border-box', position: 'relative' }}>
                   
-                  {/* 🔥 FIX: Updated onClick arguments to match App.js */}
                   <img 
-                    src={parseImages(item.imageUrl)[0]} 
+                    src={getFirstImage(item.imageUrl)} 
                     alt="" 
-                    onClick={() => onProductClick && onProductClick(item.sellerId, item.StoreName || "Shop", item.id)}
+                    onClick={() => onProductClick && onProductClick(item.sellerId, item.StoreName || "Shop", item.id, item.selectedAttributes)}
                     style={{ width: '70px', height: '70px', objectFit: 'contain', borderRadius: '4px', background: '#f9f9f9', padding: '4px', cursor: 'pointer' }} 
                   />
                   
                   <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
                     <div style={{ paddingRight: '20px' }}>
-                      {/* 🔥 FIX: Updated onClick arguments to match App.js */}
                       <div 
-                        onClick={() => onProductClick && onProductClick(item.sellerId, item.StoreName || "Shop", item.id)}
-                        style={{ fontWeight: '500', fontSize: '14px', marginBottom: '5px', color: '#212121', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'pointer' }}
+                        onClick={() => onProductClick && onProductClick(item.sellerId, item.StoreName || "Shop", item.id, item.selectedAttributes)}
+                        style={{ fontWeight: '500', fontSize: '14px', marginBottom: '2px', color: '#212121', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'pointer' }}
                       >
                         {item.name}
                       </div>
+
+                      {item.selectedAttributes && Object.keys(item.selectedAttributes).length > 0 && (
+                        <div style={{ fontSize: '11px', color: '#878787', marginBottom: '8px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                          {Object.entries(item.selectedAttributes).map(([key, val]) => (
+                            <span key={key} style={{ background: '#f0f0f0', padding: '2px 6px', borderRadius: '4px' }}>
+                              <strong>{key}:</strong> {val}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+
                       <div style={{ fontWeight: 'bold', color: '#212121', marginBottom: '10px', fontSize: '16px' }}>
                           ₹{item.price * (item.qty || 1)}
                       </div>
@@ -67,14 +89,14 @@ const CartSidebar = ({ isOpen, onClose, cartItems, onRemove, onCheckout, isVerif
                     <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', border: '1px solid #e0e0e0', borderRadius: '4px', overflow: 'hidden' }}>
                             <button 
-                              onClick={() => onUpdateQty(item.id, item.qty - 1)}
+                              onClick={() => onUpdateQty(item.id, item.qty - 1, item.variationId)}
                               style={{ width: '32px', height: '32px', border: 'none', borderRight: '1px solid #e0e0e0', background: '#f9f9f9', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px', fontWeight: 'bold' }}
                             >-</button>
                             
                             <span style={{ width: '36px', textAlign: 'center', fontWeight: '500', fontSize: '14px' }}>{item.qty}</span>
                             
                             <button 
-                              onClick={() => onUpdateQty(item.id, item.qty + 1)}
+                              onClick={() => onUpdateQty(item.id, item.qty + 1, item.variationId)}
                               disabled={isMaxReached}
                               style={{ 
                                 width: '32px', height: '32px', border: 'none', borderLeft: '1px solid #e0e0e0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px', fontWeight: 'bold',
@@ -93,7 +115,8 @@ const CartSidebar = ({ isOpen, onClose, cartItems, onRemove, onCheckout, isVerif
                     )}
                   </div>
 
-                  <button onClick={() => onRemove(item.id)} style={{ position: 'absolute', top: '10px', right: '10px', color: '#878787', background: 'none', border: 'none', cursor: 'pointer', fontSize: '18px', padding: '5px' }}>✕</button>
+                  {/* 🔥 FIX: Passes BOTH product ID and variation ID to the remove function! */}
+                  <button onClick={() => onRemove(item.id, item.variationId)} style={{ position: 'absolute', top: '10px', right: '10px', color: '#878787', background: 'none', border: 'none', cursor: 'pointer', fontSize: '18px', padding: '5px' }}>✕</button>
                 </div>
               );
             })

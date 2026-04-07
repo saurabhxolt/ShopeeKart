@@ -8,12 +8,15 @@ const SellerProfileModal = ({ isOpen, onClose, userId }) => {
     const [saving, setSaving] = useState(false);
     const [message, setMessage] = useState({ text: '', type: '' });
 
+    // 🔥 Holds dynamically fetched categories from the DB
+    const [mainCategories, setMainCategories] = useState([]);
+
     const [profile, setProfile] = useState({
         storeName: '', description: '', supportEmail: '', supportPhone: '',
         pickupAddress: '', gstin: '', bankAccount: '', ifsc: '',
         storeLogo: '', storeBanner: '', verificationDoc: [],
-        // 🔥 NEW: Added KYC Fields
-        pan: '', aadhar: '', panDoc: '', gstDoc: '', chequeDoc: '', signature: ''
+        pan: '', aadhar: '', panDoc: '', gstDoc: '', chequeDoc: '', signature: '',
+        shopCategories: [] // Array of numeric IDs
     });
 
     const [cropConfig, setCropConfig] = useState({ src: null, type: null, aspect: 1 });
@@ -27,6 +30,24 @@ const SellerProfileModal = ({ isOpen, onClose, userId }) => {
         const handleResize = () => setIsMobile(window.innerWidth < 768);
         window.addEventListener('resize', handleResize);
         return () => window.removeEventListener('resize', handleResize);
+    }, []);
+
+    // 🔥 FIX: Fetch categories and use numeric database IDs
+    useEffect(() => {
+        axios.get('http://localhost:7071/api/GetCategories')
+            .then(res => {
+                // Get Level 1 categories only
+                const level1 = res.data.filter(c => c.categoryLevel === 1);
+                
+                // Map to the actual numeric categoryId from your SQL table
+                const formattedCats = level1.map(c => ({
+                    id: c.categoryId, // e.g., 5 or 6
+                    name: c.name 
+                }));
+                
+                setMainCategories(formattedCats);
+            })
+            .catch(err => console.error("Failed to load categories for profile", err));
     }, []);
 
     useEffect(() => {
@@ -44,7 +65,21 @@ const SellerProfileModal = ({ isOpen, onClose, userId }) => {
                     try { parsedDocs = JSON.parse(res.data.verificationDoc); }
                     catch(e) { parsedDocs = [res.data.verificationDoc]; } 
                 }
-                setProfile({ ...res.data, verificationDoc: parsedDocs });
+                
+                let parsedCategories = [];
+                if (res.data.shopCategories) {
+                    try { 
+                        parsedCategories = typeof res.data.shopCategories === 'string' 
+                            ? JSON.parse(res.data.shopCategories) 
+                            : res.data.shopCategories; 
+                    }
+                    catch(e) { parsedCategories = []; }
+                }
+
+                // Ensure shopCategories contains numbers for strict comparison
+                const numericCategories = (parsedCategories || []).map(id => Number(id));
+
+                setProfile({ ...res.data, verificationDoc: parsedDocs, shopCategories: numericCategories });
             }
         } catch (err) {
             console.log("No profile found");
@@ -55,7 +90,6 @@ const SellerProfileModal = ({ isOpen, onClose, userId }) => {
 
     const handleChange = (e) => setProfile({ ...profile, [e.target.name]: e.target.value });
 
-    // Handle Cropped Images (Logo & Banner)
     const onFileChange = (e, type) => {
         if (e.target.files && e.target.files.length > 0) {
             const file = e.target.files[0];
@@ -69,7 +103,6 @@ const SellerProfileModal = ({ isOpen, onClose, userId }) => {
         }
     };
 
-    // 🔥 NEW: Handle specific KYC Document uploads (PDF/Images to Base64)
     const handleKycFileChange = (e, fieldName) => {
         if (e.target.files && e.target.files.length > 0) {
             const file = e.target.files[0];
@@ -88,28 +121,6 @@ const SellerProfileModal = ({ isOpen, onClose, userId }) => {
             setCropConfig({ src: null, type: null, aspect: 1 }); 
         } catch (err) {
             setMessage({ text: 'Failed to crop image.', type: 'error' });
-        }
-    };
-
-    // Legacy generic document handler (kept for backwards compatibility if needed)
-    const onDocumentChange = async (e) => {
-        if (e.target.files && e.target.files.length > 0) {
-            const files = Array.from(e.target.files);
-            const invalidFiles = files.filter(f => f.type !== 'application/pdf');
-            if (invalidFiles.length > 0) {
-                alert("Only PDF files are allowed for KYC documents.");
-                e.target.value = null;
-                return;
-            }
-            const base64Promises = files.map(file => {
-                return new Promise((resolve) => {
-                    const reader = new FileReader();
-                    reader.onload = () => resolve(reader.result);
-                    reader.readAsDataURL(file);
-                });
-            });
-            const base64Docs = await Promise.all(base64Promises);
-            setProfile(prev => ({ ...prev, verificationDoc: base64Docs }));
         }
     };
 
@@ -133,6 +144,9 @@ const SellerProfileModal = ({ isOpen, onClose, userId }) => {
     };
 
     const handleSaveProfile = async () => {
+        if (!profile.shopCategories || profile.shopCategories.length === 0) {
+            return setMessage({ text: '❌ Please select at least one Shop Category!', type: 'error' });
+        }
         if (!profile.storeName || !profile.pan || !profile.gstin || !profile.bankAccount || !profile.ifsc) {
             return setMessage({ text: '❌ Store Name, PAN, GSTIN, and Bank Details are mandatory!', type: 'error' });
         }
@@ -140,9 +154,13 @@ const SellerProfileModal = ({ isOpen, onClose, userId }) => {
         setSaving(true);
         setMessage({ text: '', type: '' });
         try {
-            await axios.post('http://localhost:7071/api/UpdateSellerProfile', { userId, ...profile });
+            await axios.post('http://localhost:7071/api/UpdateSellerProfile', { 
+                userId, 
+                ...profile,
+                shopCategories: JSON.stringify(profile.shopCategories) 
+            });
             setMessage({ text: '✅ Profile updated! Awaiting Admin Verification.', type: 'success' });
-            setTimeout(onClose, 3000);
+            setTimeout(onClose, 2500);
         } catch (err) {
             setMessage({ text: '❌ Failed to save profile.', type: 'error' });
         } finally {
@@ -165,7 +183,7 @@ const SellerProfileModal = ({ isOpen, onClose, userId }) => {
 
                     <div style={{ padding: isMobile ? '15px' : '30px', flex: 1 }}>
                         <div style={{ background: '#fff3cd', color: '#856404', padding: '15px', borderRadius: '8px', marginBottom: '20px', fontSize: '14px', lineHeight: '1.5' }}>
-                            ⚠️ <strong>Security Notice:</strong> Profile updates will temporarily require <strong>Admin Approval</strong> before going live.
+                            ⚠️ <strong>Security Notice:</strong> Profile updates require <strong>Admin Approval</strong> before going live.
                         </div>
                         
                         {message.text && (
@@ -174,12 +192,64 @@ const SellerProfileModal = ({ isOpen, onClose, userId }) => {
                             </div>
                         )}
 
-                        {loading ? <div style={{ textAlign: 'center', padding: '40px' }}>Loading...</div> : (
+                        {loading ? <div style={{ textAlign: 'center', padding: '40px' }}>Loading profile...</div> : (
                             <>
                                 {/* --- BASIC STORE INFO --- */}
                                 <div style={{ background: 'white', padding: isMobile ? '15px' : '20px', borderRadius: '10px', marginBottom: '20px', boxShadow: '0 2px 5px rgba(0,0,0,0.05)' }}>
                                     <h4 style={{ margin: '0 0 15px 0', color: '#007bff', borderBottom: '1px solid #eee', paddingBottom: '10px' }}>🛍️ Public Storefront</h4>
                                     
+                                    {/* DYNAMIC SHOP CATEGORY SELECTION */}
+                                    <div style={{ marginBottom: '25px', padding: '15px', background: '#f8f9fa', borderRadius: '8px', border: '1px solid #ddd' }}>
+                                        <label style={labelStyle}>What does your shop sell? (Select all that apply) *</label>
+                                        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginTop: '10px', marginBottom: '15px' }}>
+                                            {mainCategories.length === 0 ? (
+                                                <span style={{ fontSize: '13px', color: '#888' }}>No categories available.</span>
+                                            ) : (
+                                                mainCategories.map(cat => {
+                                                    const isSelected = profile.shopCategories?.includes(cat.id);
+                                                    return (
+                                                        <label key={cat.id} style={{ 
+                                                            display: 'flex', 
+                                                            alignItems: 'center', 
+                                                            gap: '8px', 
+                                                            cursor: 'pointer', 
+                                                            background: isSelected ? '#e7f3ff' : 'white', 
+                                                            padding: '10px 15px', 
+                                                            borderRadius: '6px', 
+                                                            border: isSelected ? '2px solid #007bff' : '1px solid #ccc', 
+                                                            fontSize: '14px', 
+                                                            fontWeight: isSelected ? 'bold' : 'normal', 
+                                                            transition: 'all 0.2s ease',
+                                                            color: isSelected ? '#007bff' : '#333'
+                                                        }}>
+                                                            <input 
+                                                                type="checkbox" 
+                                                                checked={isSelected || false} 
+                                                                onChange={(e) => {
+                                                                    const currentCats = profile.shopCategories || [];
+                                                                    if (e.target.checked) {
+                                                                        setProfile({...profile, shopCategories: [...currentCats, cat.id]});
+                                                                    } else {
+                                                                        setProfile({...profile, shopCategories: currentCats.filter(id => id !== cat.id)});
+                                                                    }
+                                                                }}
+                                                                style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+                                                            />
+                                                            {cat.name}
+                                                        </label>
+                                                    )
+                                                })
+                                            )}
+                                        </div>
+
+                                        <div style={{ background: '#fff5f5', border: '1px solid #feb2b2', borderRadius: '6px', padding: '12px', display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+                                            <span style={{ fontSize: '18px' }}>⚖️</span>
+                                            <div style={{ fontSize: '12px', color: '#c53030', lineHeight: '1.4' }}>
+                                                <strong>Legal Requirement:</strong> Your <strong>GST Certificate</strong> must mention business activities related to selected categories. Violations may result in suspension.
+                                            </div>
+                                        </div>
+                                    </div>
+
                                     <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: '20px', marginBottom: '25px', padding: '15px', background: '#f8f9fa', borderRadius: '8px', border: '1px dashed #ccc' }}>
                                         <div style={{ width: isMobile ? '100%' : '140px', textAlign: 'center' }}>
                                             <label style={labelStyle}>Store Logo</label>
@@ -198,7 +268,7 @@ const SellerProfileModal = ({ isOpen, onClose, userId }) => {
                                         <div style={{ flex: 1, borderTop: isMobile ? '1px dashed #ddd' : 'none', paddingTop: isMobile ? '15px' : '0' }}>
                                             <label style={labelStyle}>Store Banner</label>
                                             <div style={{ width: '100%', height: isMobile ? '80px' : '100px', marginBottom: '10px', borderRadius: '8px', background: 'white', border: '2px dashed #bbb', display: 'flex', justifyContent: 'center', alignItems: 'center', overflow: 'hidden' }}>
-                                                {profile.storeBanner ? <img src={profile.storeBanner} alt="Banner" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span style={{ fontSize: '13px', color: '#aaa', fontWeight: 'bold' }}>Upload a wide banner</span>}
+                                                {profile.storeBanner ? <img src={profile.storeBanner} alt="Banner" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span style={{ fontSize: '13px', color: '#aaa', fontWeight: 'bold' }}>Upload store banner</span>}
                                             </div>
                                             <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', alignItems: isMobile ? 'flex-start' : 'center', gap: '10px' }}>
                                                 <input type="file" accept="image/*" onChange={(e) => onFileChange(e, 'storeBanner')} style={{ fontSize: '11px', width: '100%' }} />
@@ -218,49 +288,45 @@ const SellerProfileModal = ({ isOpen, onClose, userId }) => {
                                     </div>
                                     <div style={{ marginBottom: '15px' }}><label style={labelStyle}>Support Email</label><input type="email" name="supportEmail" value={profile.supportEmail} onChange={handleChange} style={inputStyle} /></div>
                                     <div style={{ marginBottom: '15px' }}><label style={labelStyle}>Store Description</label><textarea name="description" value={profile.description} onChange={handleChange} style={{ ...inputStyle, height: '80px', fontFamily: 'inherit' }} /></div>
-                                    <div><label style={labelStyle}>Pickup Address (For Shipping)</label><textarea name="pickupAddress" value={profile.pickupAddress} onChange={handleChange} style={{ ...inputStyle, height: '60px', fontFamily: 'inherit' }} /></div>
+                                    <div><label style={labelStyle}>Pickup Address</label><textarea name="pickupAddress" value={profile.pickupAddress} onChange={handleChange} style={{ ...inputStyle, height: '60px', fontFamily: 'inherit' }} /></div>
                                 </div>
 
                                 {/* --- LEGAL & KYC INFO --- */}
                                 <div style={{ background: 'white', padding: isMobile ? '15px' : '20px', borderRadius: '10px', marginBottom: '20px', boxShadow: '0 2px 5px rgba(0,0,0,0.05)', borderLeft: '4px solid #856404' }}>
                                     <h4 style={{ margin: '0 0 5px 0', color: '#856404' }}>⚖️ Legal & KYC Compliance</h4>
-                                    <p style={{ fontSize: '12px', color: '#666', marginBottom: '15px', marginTop: 0 }}>Required for Tax Deductions (TDS/TCS) and Payouts.</p>
                                     
                                     <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '15px' }}>
-                                        {/* PAN Card */}
                                         <div>
                                             <label style={labelStyle}>PAN Number *</label>
                                             <input name="pan" value={profile.pan} onChange={handleChange} maxLength="10" placeholder="ABCDE1234F" style={{...inputStyle, textTransform: 'uppercase'}} />
                                         </div>
                                         <div>
                                             <label style={{...labelStyle, display: 'flex', justifyContent: 'space-between'}}>
-                                                Upload PAN Card *
+                                                PAN Card *
                                                 {profile.panDoc && <span onClick={() => openDocSafe(profile.panDoc)} style={{color: '#007bff', cursor: 'pointer', textTransform: 'none'}}>👁️ View</span>}
                                             </label>
                                             <input type="file" accept="image/*,.pdf" onChange={(e) => handleKycFileChange(e, 'panDoc')} style={{ fontSize: '11px', width: '100%', padding: '10px', background: '#f8f9fa', border: '1px solid #ccc', borderRadius: '6px' }} />
                                         </div>
 
-                                        {/* GSTIN */}
                                         <div>
                                             <label style={labelStyle}>GSTIN Number *</label>
                                             <input name="gstin" value={profile.gstin} onChange={handleChange} maxLength="15" placeholder="22AAAAA0000A1Z5" style={{...inputStyle, textTransform: 'uppercase'}} />
                                         </div>
                                         <div>
                                             <label style={{...labelStyle, display: 'flex', justifyContent: 'space-between'}}>
-                                                Upload GST Certificate *
+                                                GST Certificate *
                                                 {profile.gstDoc && <span onClick={() => openDocSafe(profile.gstDoc)} style={{color: '#007bff', cursor: 'pointer', textTransform: 'none'}}>👁️ View</span>}
                                             </label>
                                             <input type="file" accept="image/*,.pdf" onChange={(e) => handleKycFileChange(e, 'gstDoc')} style={{ fontSize: '11px', width: '100%', padding: '10px', background: '#f8f9fa', border: '1px solid #ccc', borderRadius: '6px' }} />
                                         </div>
 
-                                        {/* Aadhar & Signature */}
                                         <div>
                                             <label style={labelStyle}>Aadhar Number</label>
                                             <input name="aadhar" value={profile.aadhar} onChange={handleChange} maxLength="12" style={inputStyle} />
                                         </div>
                                         <div>
                                             <label style={{...labelStyle, display: 'flex', justifyContent: 'space-between'}}>
-                                                Signature (For Invoices) *
+                                                Signature *
                                                 {profile.signature && <span onClick={() => openDocSafe(profile.signature)} style={{color: '#007bff', cursor: 'pointer', textTransform: 'none'}}>👁️ View</span>}
                                             </label>
                                             <input type="file" accept="image/*" onChange={(e) => handleKycFileChange(e, 'signature')} style={{ fontSize: '11px', width: '100%', padding: '10px', background: '#f8f9fa', border: '1px solid #ccc', borderRadius: '6px' }} />
@@ -271,10 +337,9 @@ const SellerProfileModal = ({ isOpen, onClose, userId }) => {
                                 {/* --- BANKING INFO --- */}
                                 <div style={{ background: 'white', padding: isMobile ? '15px' : '20px', borderRadius: '10px', marginBottom: '20px', boxShadow: '0 2px 5px rgba(0,0,0,0.05)', borderLeft: '4px solid #17a2b8' }}>
                                     <h4 style={{ margin: '0 0 15px 0', color: '#17a2b8' }}>🏦 Payout Details</h4>
-                                    
                                     <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '15px' }}>
-                                        <div><label style={labelStyle}>Bank Account Number *</label><input type="password" name="bankAccount" value={profile.bankAccount} onChange={handleChange} style={inputStyle} /></div>
-                                        <div><label style={labelStyle}>Bank IFSC Code *</label><input name="ifsc" value={profile.ifsc} onChange={handleChange} style={{...inputStyle, textTransform: 'uppercase'}} /></div>
+                                        <div><label style={labelStyle}>Bank Account *</label><input type="password" name="bankAccount" value={profile.bankAccount} onChange={handleChange} style={inputStyle} /></div>
+                                        <div><label style={labelStyle}>IFSC Code *</label><input name="ifsc" value={profile.ifsc} onChange={handleChange} style={{...inputStyle, textTransform: 'uppercase'}} /></div>
                                         <div style={{ gridColumn: isMobile ? 'span 1' : 'span 2' }}>
                                             <label style={{...labelStyle, display: 'flex', justifyContent: 'space-between'}}>
                                                 Cancelled Cheque *
@@ -297,7 +362,7 @@ const SellerProfileModal = ({ isOpen, onClose, userId }) => {
                 </div>
             </div>
 
-            {/* --- CROP STUDIO OVERLAY (Unchanged) --- */}
+            {/* --- CROP STUDIO OVERLAY --- */}
             {cropConfig.src && (
                 <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.95)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 3000, padding: isMobile ? '10px' : '0' }}>
                     <div style={{ color: 'white', marginBottom: '20px', fontSize: isMobile ? '16px' : '20px', fontWeight: 'bold', textAlign: 'center' }}>

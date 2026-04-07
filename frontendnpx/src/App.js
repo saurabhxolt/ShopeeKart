@@ -17,11 +17,13 @@ import CartSidebar from './components/cart/CartSidebar';
 import CheckoutModal from './components/cart/CheckoutModal';
 import BuyerOrdersModal from './components/orders/BuyerOrdersModal';
 import BuyerAccountModal from './components/account/BuyerAccountModal'; 
+import SellerProfileModal from './components/profile/SellerProfileModal'; 
 
 function App() {
   const [user, setUser] = useState(null);
   const [selectedSeller, setSelectedSeller] = useState(null); 
   const [targetProductId, setTargetProductId] = useState(null);
+  const [targetAttributes, setTargetAttributes] = useState(null);
   const [refreshKey, setRefreshKey] = useState(0); 
   
   const [cartItems, setCartItems] = useState([]);
@@ -38,16 +40,20 @@ function App() {
   const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
   const [activeAccountTab, setActiveAccountTab] = useState('profile');
 
+  const [isSellerProfileOpen, setIsSellerProfileOpen] = useState(false);
+
   const [checkoutSession, setCheckoutSession] = useState({ items: [], isBuyNow: false });
 
-  // --- NEW: POLICY MODAL STATES ---
+  // --- POLICY MODAL STATES ---
   const [showTermsModal, setShowTermsModal] = useState(false);
   const [activePolicyTitle, setActivePolicyTitle] = useState('');
   const [policyContent, setPolicyContent] = useState(''); 
   const [policyLang, setPolicyLang] = useState('en'); 
 
-  // 🔥 VIEWPORT DETECTION
+  // VIEWPORT DETECTION
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+
+  const cartUpdateTimer = useRef(null);
 
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth < 768);
@@ -55,7 +61,6 @@ function App() {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // --- NEW: FETCH POLICY LOGIC ---
   const openPolicyDocument = async (fileName, title) => {
       setActivePolicyTitle(title);
       setShowTermsModal(true);
@@ -72,9 +77,6 @@ function App() {
       }
   };
 
-  // ==========================================
-  // 🔥 SMART BATCHING TRAFFIC LOGGING
-  // ==========================================
   const trafficQueue = useRef([]);
 
   const flushLogs = useCallback(() => {
@@ -114,14 +116,13 @@ function App() {
       return () => window.removeEventListener('beforeunload', handleUnload);
   }, [flushLogs]);
 
-  // --- GLOBAL SEARCH EFFECT ---
   useEffect(() => {
     const delayDebounceFn = setTimeout(async () => {
         if (globalSearch.trim().length > 1) {
             setIsSearching(true);
             try {
                 const res = await axios.get(`http://localhost:7071/api/GlobalSearch?q=${globalSearch}`);
-                searchResults(res.data);
+                setSearchResults(res.data);
             } catch (err) {
                 console.error("Global search failed", err);
             } finally {
@@ -135,56 +136,131 @@ function App() {
     return () => clearTimeout(delayDebounceFn);
   }, [globalSearch]);
 
-  // --- CART & CHECKOUT LOGIC ---
+  // ==========================================
+  // 🔥 UNIFIED SSOT CART LOGIC
+  // ==========================================
+  
+  const dispatchCartAction = async (payload) => {
+      try {
+          const response = await axios.post('http://localhost:7071/api/ManageCart', {
+              userId: user.userId,
+              ...payload
+          });
+          
+          if (response.data && response.data.cart) {
+              setCartItems(response.data.cart);
+          }
+          return { success: true, data: response.data };
+      } catch (e) {
+          console.error("Cart sync failed:", e);
+          return { success: false, error: e };
+      }
+  };
+
+  // 🔥 FIX: Hydrate cart WITHOUT forcing navigation to a specific shop
+  useEffect(() => {
+      const hydrateCart = async () => {
+          if (user?.userId) {
+              // This populates cartItems so the Header/Sidebar show the correct data
+              await dispatchCartAction({ action: 'FETCH' });
+              
+              // We REMOVED setSelectedSeller here so you land on the Shop List page.
+          } else {
+              setCartItems([]);
+          }
+      };
+      hydrateCart();
+  }, [user?.userId]);
+
   const addToCart = async (product, isBuyNow = false) => {
     const targetSellerId = selectedSeller?.id || selectedSeller?.SellerId;
     const targetSellerName = selectedSeller?.StoreName || selectedSeller?.name || "Unnamed Shop";
     if(!targetSellerId) return;
 
+    const prodId = product.id || product.ProductId;
+    const varId = product.variationId || product.VariationId || null;
+
     if (isBuyNow) {
-        const buyNowItem = { ...product, qty: 1, sellerId: targetSellerId, StoreName: targetSellerName, maxStock: product.qty };
+        const buyNowItem = { ...product, qty: 1, sellerId: targetSellerId, StoreName: targetSellerName, maxStock: product.qty, id: prodId, variationId: varId };
         setCheckoutSession({ items: [buyNowItem], isBuyNow: true });
         setIsCartOpen(false); 
         handleVerifyAndCheckout([buyNowItem]); 
         return;
     }
 
-    let currentCart = [...cartItems];
-    if (currentCart.length > 0) {
-        const existingSellerId = currentCart[0].sellerId;
-        if (existingSellerId && existingSellerId !== targetSellerId) {
+    if (cartItems.length > 0) {
+        const existingSellerId = cartItems[0].sellerId;
+        if (existingSellerId && String(existingSellerId) !== String(targetSellerId)) {
             if (!window.confirm(`⚠️ Switch Shop?\n\nYour cart contains items from another shop.\n\nClick OK to CLEAR cart and add this item.`)) return;
-            currentCart = []; 
+            
+            const res = await dispatchCartAction({ action: 'CLEAR' });
+            if (!res.success) return alert("❌ Failed to clear old cart from DB.");
         }
     }
 
-    const existingIndex = currentCart.findIndex(item => item.id === product.id);
-    const currentQtyInCart = existingIndex >= 0 ? currentCart[existingIndex].qty : 0;
+    const addRes = await dispatchCartAction({ action: 'ADD', productId: prodId, variationId: varId, qty: 1 });
     
-    if (currentQtyInCart + 1 > product.qty) return alert(`⚠️ Out of Stock! Only ${product.qty} items available.`);
-
-    if (existingIndex >= 0) {
-        currentCart[existingIndex] = { ...currentCart[existingIndex], qty: currentCart[existingIndex].qty + 1 };
-    } else {
-        currentCart.push({ ...product, qty: 1, sellerId: targetSellerId, StoreName: targetSellerName, maxStock: product.qty });
+    if (!addRes.success) {
+        alert("❌ Failed to save to database! Please try again.");
+        return;
     }
 
-    setCartItems(currentCart);
-    axios.post('http://localhost:7071/api/AddToCart', { userId: user.userId, productId: product.id }).catch(e => console.error(e));
     setIsCartOpen(true); 
   };
 
-  const removeFromCart = (id) => setCartItems(prev => prev.filter(item => item.id !== id));
+  const removeFromCart = async (id, variationId = null) => {
+      setCartItems(prev => prev.filter(item => {
+          const isMatch = String(item.id || item.ProductId) === String(id) && 
+                          String(item.variationId || item.VariationId) === String(variationId || 'null');
+          return !isMatch;
+      }));
 
-  const handleUpdateQty = (itemId, newQty) => {
+      await dispatchCartAction({ action: 'REMOVE', productId: id, variationId: variationId });
+  };
+
+  const handleUpdateQty = async (itemId, newQty, variationId = null) => {
+      let finalQty = newQty;
+      
+      // 1. Instant UI Update for the main Cart
       setCartItems(prev => prev.map(item => {
-          if (Number(item.id) === Number(itemId)) {
-            if (newQty < 1) return { ...item, qty: 0 };
-            if (newQty > (item.maxStock || 100)) return item;
-            return { ...item, qty: newQty };
+          const isMatch = String(item.id || item.ProductId) === String(itemId) && 
+                          (variationId ? String(item.variationId || item.VariationId) === String(variationId) : true);
+          
+          if (isMatch) {
+            if (newQty < 1) finalQty = 0;
+            else if (newQty > (item.maxStock || 100)) finalQty = item.maxStock || 100;
+            else finalQty = newQty;
+            return { ...item, qty: finalQty };
         }
           return item;
       }).filter(item => item.qty > 0)); 
+
+      // 🔥 THE FIX: Instantly update the Checkout Session snapshot so the Modal UI updates!
+      setCheckoutSession(prevSession => {
+          if (!prevSession || !prevSession.items) return prevSession;
+          return {
+              ...prevSession,
+              items: prevSession.items.map(item => {
+                  const isMatch = String(item.id || item.ProductId) === String(itemId) && 
+                                  (variationId ? String(item.variationId || item.VariationId) === String(variationId) : true);
+                  if (isMatch) return { ...item, qty: finalQty };
+                  return item;
+              }).filter(item => item.qty > 0)
+          };
+      });
+      
+      // 2. Debounce logic to prevent DB spam
+      if (cartUpdateTimer.current) {
+          clearTimeout(cartUpdateTimer.current);
+      }
+
+      cartUpdateTimer.current = setTimeout(async () => {
+          if (finalQty <= 0) {
+              await dispatchCartAction({ action: 'REMOVE', productId: itemId, variationId: variationId });
+          } else {
+              await dispatchCartAction({ action: 'UPDATE_QTY', productId: itemId, variationId: variationId, qty: finalQty });
+          }
+      }, 400); 
   };
 
   const handleVerifyAndCheckout = async (itemsToCheck) => {
@@ -196,13 +272,29 @@ function App() {
         const res = await axios.get(`http://localhost:7071/api/GetProducts?sellerId=${sellerId}`);
         const freshProducts = res.data;
         let errors = [];
+        
         for (const checkoutItem of itemsToCheck) {
-            const freshItem = freshProducts.find(p => p.id === checkoutItem.id);
-            if (!freshItem) errors.push(`${checkoutItem.name} is no longer available.`);
-            else if (freshItem.qty < checkoutItem.qty) errors.push(`${checkoutItem.name}: Only ${freshItem.qty} left.`);
+            const freshItem = freshProducts.find(p => String(p.id || p.ProductId) === String(checkoutItem.id || checkoutItem.ProductId));
+            
+            if (!freshItem) {
+                errors.push(`"${checkoutItem.name}" is no longer available.`);
+            } else if (checkoutItem.variationId) {
+                const freshVar = freshItem.variations?.find(v => String(v.id || v.VariationId) === String(checkoutItem.variationId));
+                if (!freshVar) {
+                    errors.push(`Selected option for "${checkoutItem.name}" is no longer available.`);
+                } else if (freshVar.stock < checkoutItem.qty) {
+                    const attrText = checkoutItem.selectedAttributes ? Object.values(checkoutItem.selectedAttributes).join(', ') : 'Variation';
+                    errors.push(`"${checkoutItem.name}" (${attrText}): Only ${freshVar.stock} left in stock.`);
+                }
+            } else {
+                if (freshItem.qty < checkoutItem.qty) {
+                    errors.push(`"${checkoutItem.name}": Only ${freshItem.qty} left in stock.`);
+                }
+            }
         }
+        
         setIsVerifyingStock(false);
-        if (errors.length > 0) return alert("⚠️ Stock Issue:\n" + errors.join("\n"));
+        if (errors.length > 0) return alert("⚠️ Stock Issue:\n\n" + errors.join("\n"));
         setIsCartOpen(false);
         setIsCheckoutModalOpen(true);
     } catch (err) {
@@ -225,23 +317,37 @@ function App() {
           
           if (res.status === 200) {
               for (const item of checkoutSession.items) {
-                  if (ratings[item.id]) {
+                  const itemId = item.id || item.ProductId;
+                  if (ratings[itemId]) {
                       await axios.post('http://localhost:7071/api/AddRating', {
-                          productId: item.id, userId: user.userId, rating: ratings[item.id]
+                          productId: itemId, userId: user.userId, rating: ratings[itemId]
                       }).catch(e => console.error("Rating save failed", e));
                   }
               }
-              if (!checkoutSession.isBuyNow) setCartItems([]);
+              if (!checkoutSession.isBuyNow) {
+                  setCartItems([]);
+                  await dispatchCartAction({ action: 'CLEAR' }); 
+              }
               setRefreshKey(prev => prev + 1); 
               
-              // 🔥 FIX: Returning BOTH IDs in an object
               return {
                   orderId: res.data.orderId,
                   transactionId: res.data.transactionId
               }; 
           }
       } catch (err) {
-          throw new Error(err.response?.data || err.message);
+          // 🔥 THE FIX: If it's our stock conflict JSON, throw it directly!
+          if (err.response && err.response.data && err.response.data.code === 'INSUFFICIENT_STOCK') {
+              throw err.response.data; 
+          }
+          
+          // For any other normal error, safely pull the string
+          let errorMsg = err.message;
+          if (err.response && err.response.data) {
+              errorMsg = typeof err.response.data === 'string' ? err.response.data : JSON.stringify(err.response.data);
+          }
+          throw new Error(errorMsg);
+
       } finally {
           setIsVerifyingStock(false);    
       }
@@ -254,6 +360,8 @@ function App() {
       } else if (feature === 'logout') {
           flushLogs(); 
           setUser(null); setSelectedSeller(null); setCartItems([]);
+      } else if (feature === 'store-settings') {
+          setIsSellerProfileOpen(true);
       } else {
           setActiveAccountTab(feature);
           setIsAccountModalOpen(true);
@@ -265,7 +373,6 @@ function App() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', background: '#f1f3f6', width: '100%', overflowX: 'hidden' }}>
       
-      {/* --- CSS FOR POLICY LANGUAGES --- */}
       <style>{`
         .policy-wrapper .lang-en, .policy-wrapper .lang-hi, .policy-wrapper .lang-mr { display: none; }
         .policy-wrapper.show-en .lang-en { display: block; }
@@ -289,11 +396,12 @@ function App() {
       
       <div style={{ padding: isMobile ? '0' : '40px', flex: 1, width: '100%', boxSizing: 'border-box' }}>
           {user.role === 'ADMIN' && <AdminDashboard user={user} />}
-          {user.role === 'SELLER' && <SellerDashboard user={user} />}
+          {user.role === 'SELLER' && <SellerDashboard user={user} refreshKey={refreshKey} />}
           
           {user.role === 'BUYER' && (
               <>
                 {globalSearch.trim().length > 1 ? (
+                    // ... search result rendering ...
                     <div style={{ padding: isMobile ? '10px' : '0' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
                             <h2 style={{ margin: 0, color: '#212121', fontSize: isMobile ? '18px' : '24px' }}>
@@ -306,14 +414,12 @@ function App() {
                             <div style={{ textAlign: 'center', padding: '60px', background: 'white', borderRadius: '8px' }}>
                                 <div style={{ fontSize: '50px', marginBottom: '10px' }}>😕</div>
                                 <h3>No products found.</h3>
-                                <p style={{ color: '#878787' }}>Try different keywords or check your spelling.</p>
                             </div>
                         ) : (
                             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', justifyContent: isMobile ? 'space-between' : 'flex-start' }}>
                                 {searchResults.map(product => {
                                     let imgs = [];
                                     try { imgs = JSON.parse(product.ImageUrl); } catch(e) { imgs = [product.ImageUrl]; }
-                                    
                                     return (
                                         <div 
                                             key={product.id} 
@@ -321,10 +427,9 @@ function App() {
                                                 setGlobalSearch(''); 
                                                 setTargetProductId(product.id);
                                                 setSelectedSeller({ id: product.sellerId, StoreName: product.StoreName });
+                                                setTargetAttributes(null);
                                             }}
-                                            style={{ background: 'white', padding: '15px', borderRadius: '8px', width: isMobile ? 'calc(50% - 5px)' : '220px', boxSizing: 'border-box', cursor: 'pointer', boxShadow: '0 2px 8px rgba(0,0,0,0.1)', transition: 'transform 0.2s' }}
-                                            onMouseOver={(e) => !isMobile && (e.currentTarget.style.transform = 'translateY(-5px)')}
-                                            onMouseOut={(e) => e.currentTarget.style.transform = 'translateY(0)'}
+                                            style={{ background: 'white', padding: '15px', borderRadius: '8px', width: isMobile ? 'calc(50% - 5px)' : '220px', boxSizing: 'border-box', cursor: 'pointer', boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}
                                         >
                                             <div style={{ height: isMobile ? '120px' : '180px', marginBottom: '10px' }}>
                                                 <img src={imgs[0]} style={{ width: '100%', height: '100%', objectFit: 'contain' }} alt="" />
@@ -332,7 +437,7 @@ function App() {
                                             <div style={{ fontWeight: 'bold', fontSize: '14px', height: '40px', overflow: 'hidden' }}>{product.Name}</div>
                                             <div style={{ color: '#2874f0', fontSize: '18px', fontWeight: 'bold', margin: '10px 0' }}>₹{product.Price}</div>
                                             <div style={{ fontSize: '12px', color: '#878787', borderTop: '1px solid #eee', paddingTop: '10px' }}>
-                                                🏪 Store: <span style={{ color: '#212121', fontWeight: '500' }}>{product.StoreName}</span>
+                                                🏪 {product.StoreName}
                                             </div>
                                         </div>
                                     );
@@ -342,12 +447,15 @@ function App() {
                     </div>
                 ) : (
                     !selectedSeller ? (
-                        <BuyerShopList onEnterShop={(shop) => setSelectedSeller(shop)} refreshKey={refreshKey} />
+                        <BuyerShopList 
+                            onEnterShop={(shop) => { setSelectedSeller(shop); setTargetAttributes(null); }} 
+                            refreshKey={refreshKey} 
+                        />
                     ) : (
                         <BuyerShopView
                             user={user}
                             selectedSeller={selectedSeller}
-                            onBack={() => { setSelectedSeller(null); setTargetProductId(null); }}
+                            onBack={() => { setSelectedSeller(null); setTargetProductId(null); setTargetAttributes(null); }}
                             addToCart={addToCart}
                             refreshKey={refreshKey}
                             targetProductId={targetProductId}
@@ -355,6 +463,8 @@ function App() {
                             cartItems={cartItems}
                             onUpdateQty={handleUpdateQty}
                             logTraffic={logTraffic}
+                            targetAttributes={targetAttributes}
+                            setTargetAttributes={setTargetAttributes}
                         />
                     )
                 )}
@@ -362,31 +472,17 @@ function App() {
           )}    
       </div>
 
-      {/* 🔥 FIXED: Passing the policy function to Footer */}
       <Footer user={user} onOpenPolicy={openPolicyDocument} />
 
-      {/* --- GLOBAL POLICY MODAL (Appears on any page) --- */}
       {showTermsModal && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 3000, padding: '15px' }}>
           <div style={{ backgroundColor: 'white', padding: isMobile ? '20px' : '30px', borderRadius: '12px', width: '95%', maxWidth: '600px', maxHeight: '90vh', display: 'flex', flexDirection: 'column', position: 'relative', boxShadow: '0 10px 30px rgba(0,0,0,0.3)' }}>
-            
             <button onClick={() => setShowTermsModal(false)} style={{ position: 'absolute', top: '10px', right: '15px', border: 'none', background: 'none', fontSize: '28px', cursor: 'pointer', color: '#666' }}>&times;</button>
-            
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', borderBottom: '1px solid #eee', paddingBottom: '15px', marginBottom: '15px' }}>
-                <h2 style={{ margin: 0, color: '#333', fontSize: '20px' }}>{activePolicyTitle}</h2>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                    <button onClick={() => setPolicyLang('en')} style={{ padding: '6px 12px', cursor: 'pointer', border: '1px solid #2874f0', background: policyLang === 'en' ? '#2874f0' : 'white', color: policyLang === 'en' ? 'white' : '#2874f0', borderRadius: '4px', fontSize: '12px', fontWeight: 'bold' }}>English</button>
-                    <button onClick={() => setPolicyLang('hi')} style={{ padding: '6px 12px', cursor: 'pointer', border: '1px solid #2874f0', background: policyLang === 'hi' ? '#2874f0' : 'white', color: policyLang === 'hi' ? 'white' : '#2874f0', borderRadius: '4px', fontSize: '12px', fontWeight: 'bold' }}>हिंदी</button>
-                    <button onClick={() => setPolicyLang('mr')} style={{ padding: '6px 12px', cursor: 'pointer', border: '1px solid #2874f0', background: policyLang === 'mr' ? '#2874f0' : 'white', color: policyLang === 'mr' ? 'white' : '#2874f0', borderRadius: '4px', fontSize: '12px', fontWeight: 'bold' }}>मराठी</button>
-                </div>
-            </div>
-
             <div 
                 className={`policy-wrapper show-${policyLang}`}
                 style={{ flex: 1, fontSize: '14px', lineHeight: '1.6', color: '#444', overflowY: 'auto', maxHeight: '55vh', paddingRight: '10px', marginBottom: '15px' }}
                 dangerouslySetInnerHTML={{ __html: policyContent }} 
             />
-            
             <button onClick={() => setShowTermsModal(false)} style={{ width: '100%', padding: '14px', background: '#10b981', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '15px' }}>
                 Close
             </button>
@@ -394,11 +490,43 @@ function App() {
         </div>
       )}
 
-      {/* OTHER MODALS */}
-      <CartSidebar isOpen={isCartOpen} onClose={() => setIsCartOpen(false)} cartItems={cartItems} onRemove={removeFromCart} onCheckout={() => { setCheckoutSession({ items: cartItems, isBuyNow: false }); handleVerifyAndCheckout(cartItems); }} isVerifyingStock={isVerifyingStock} onUpdateQty={handleUpdateQty} onProductClick={(sellerId, storeName, productId) => { setIsCartOpen(false); setTargetProductId(productId); setSelectedSeller({ id: sellerId, StoreName: storeName }); }} />
-      <CheckoutModal isOpen={isCheckoutModalOpen} onClose={() => setIsCheckoutModalOpen(false)} cartItems={checkoutSession.items} cartTotal={checkoutSession.items.reduce((sum, item) => sum + (Number(item.price) * (item.qty || 1)), 0)} onConfirmOrder={handlePlaceOrder} userId={user?.userId} onViewOrders={() => { setIsCheckoutModalOpen(false); setIsBuyerOrdersOpen(true); }} />
+      <CartSidebar 
+          isOpen={isCartOpen} 
+          onClose={() => setIsCartOpen(false)} 
+          cartItems={cartItems} 
+          onRemove={removeFromCart} 
+          onCheckout={() => { setCheckoutSession({ items: cartItems, isBuyNow: false }); handleVerifyAndCheckout(cartItems); }} 
+          isVerifyingStock={isVerifyingStock} 
+          onUpdateQty={handleUpdateQty} 
+          onProductClick={(sellerId, storeName, productId, attributes) => { 
+              setIsCartOpen(false); 
+              setTargetProductId(productId); 
+              setSelectedSeller({ id: sellerId, StoreName: storeName }); 
+              setTargetAttributes(attributes || null); 
+          }} 
+      />
+      <CheckoutModal 
+          isOpen={isCheckoutModalOpen} 
+          onClose={() => setIsCheckoutModalOpen(false)} 
+          cartItems={checkoutSession.items} 
+          cartTotal={checkoutSession.items.reduce((sum, item) => sum + (Number(item.price) * (item.qty || 1)), 0)} 
+          onConfirmOrder={handlePlaceOrder} 
+          userId={user?.userId} 
+          onViewOrders={() => { setIsCheckoutModalOpen(false); setIsBuyerOrdersOpen(true); }} 
+          onUpdateQty={handleUpdateQty} // 🔥 NEW PROP
+      />
       <BuyerOrdersModal isOpen={isBuyerOrdersOpen} onClose={() => setIsBuyerOrdersOpen(false)} userId={user?.userId} />
       <BuyerAccountModal isOpen={isAccountModalOpen} onClose={() => setIsAccountModalOpen(false)} activeTab={activeAccountTab} setActiveTab={setActiveAccountTab} user={user} onUpdateUser={setUser} onVisitShop={(sellerId, storeName, productId) => { setIsAccountModalOpen(false); setTargetProductId(productId); setSelectedSeller({ id: sellerId, StoreName: storeName }); }} />
+      
+      <SellerProfileModal 
+        isOpen={isSellerProfileOpen} 
+        onClose={() => {
+            setIsSellerProfileOpen(false);
+            setRefreshKey(prev => prev + 1); 
+        }} 
+        userId={user?.userId} 
+      />
+
     </div>
   );
 }

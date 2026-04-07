@@ -17,7 +17,6 @@ const Header = ({
 }) => {
   const hideSearch = !!selectedSeller || isAccountModalOpen || isCheckoutModalOpen || isBuyerOrdersOpen;
 
-  // 🔥 ADDED: Viewport detection for mobile responsiveness
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
 
   useEffect(() => {
@@ -29,7 +28,6 @@ const Header = ({
   return (
     <header style={{ 
         background: 'white', 
-        // 🔥 Responsive padding: small on mobile, large on desktop
         padding: isMobile ? '12px 15px' : '12px 60px', 
         display: 'flex', 
         alignItems: 'center', 
@@ -47,7 +45,7 @@ const Header = ({
             MyMarket {user.role !== 'BUYER' && <span style={{fontSize:'12px', color:'#dc3545', textTransform:'uppercase'}}>({user.role})</span>}
         </div>
 
-        {/* Search Bar (Hidden on mobile entirely to save space, or use a search icon toggle later) */}
+        {/* Search Bar */}
         {user.role === 'BUYER' && !hideSearch && !isMobile ? (
             <div style={{ flex: 1, maxWidth: '600px', margin: '0 40px', position: 'relative' }}>
                 <span style={{ position: 'absolute', left: '15px', top: '10px', color: '#2874f0', fontSize: '18px' }}>⚲</span>
@@ -65,12 +63,11 @@ const Header = ({
             <div 
                 onMouseEnter={() => !isMobile && setIsDropdownOpen(true)} 
                 onMouseLeave={() => !isMobile && setIsDropdownOpen(false)}
-                onClick={() => isMobile && setIsDropdownOpen(!isDropdownOpen)} // Tap to open on mobile
+                onClick={() => isMobile && setIsDropdownOpen(!isDropdownOpen)} 
                 style={{ position: 'relative', cursor: 'pointer', height: '40px', display: 'flex', alignItems: 'center' }}
             >
                 <div style={{ fontWeight: '500', fontSize: isMobile ? '14px' : '16px', color: '#212121', display: 'flex', alignItems: 'center', gap: '4px' }}>
                     <span style={{ fontSize: isMobile ? '18px' : '20px' }}>👤</span> 
-                    {/* Hide name on mobile, show only icon + dropdown arrow */}
                     {!isMobile && <span style={{ marginLeft: '4px' }}>{user.name}</span>}
                     <span style={{ fontSize: '12px', color: '#878787', transition: 'transform 0.2s', transform: isDropdownOpen ? 'rotate(180deg)' : 'rotate(0deg)' }}>▼</span>
                 </div>
@@ -96,7 +93,18 @@ const Header = ({
                             </>
                         )}
 
-                        {user.role === 'SELLER' && <div className="dropdown-item">🏪 Shop Dashboard</div>}
+                        {/* 🔥 SELLER MENU OPTIONS */}
+                        {user.role === 'SELLER' && (
+                            <>
+                                <div className="dropdown-item" onClick={() => window.location.reload()}>🏪 Shop Dashboard</div>
+                                {/* Calls openAccountFeature with 'store-settings' which we will catch in App.js/SellerDashboard */}
+                                <div className="dropdown-item" onClick={() => {
+                                    setIsDropdownOpen(false);
+                                    openAccountFeature('store-settings');
+                                }}>⚙️ Store Settings</div>
+                            </>
+                        )}
+
                         {user.role === 'ADMIN' && <div className="dropdown-item">📊 Admin Panel</div>}
 
                         <div className="dropdown-item" onClick={() => openAccountFeature('logout')} style={{ borderTop: '2px solid #eee', color: '#dc3545' }}>🚪 Logout</div>
@@ -110,7 +118,6 @@ const Header = ({
                     <span style={{ fontSize: isMobile ? '24px' : '22px', position: 'relative' }}>🛒
                         {cartItems.length > 0 && <span style={{ position: 'absolute', top: '-6px', right: '-8px', background: '#ff6161', color: 'white', borderRadius: '50%', padding: '2px 6px', fontSize: '10px', fontWeight: 'bold', border: '2px solid white' }}>{cartItems.reduce((acc, item) => acc + (item.qty || 1), 0)}</span>}
                     </span>
-                    {/* Hide "Cart" text on mobile to prevent overflow */}
                     {!isMobile && <span>Cart</span>}
                 </div>
             )}

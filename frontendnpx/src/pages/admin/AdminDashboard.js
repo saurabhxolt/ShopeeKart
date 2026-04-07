@@ -2,6 +2,9 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { AnalyticsCards, OverviewTab, OrdersTab, ProductsTab, SellersTab, BuyersTab, SecurityTab, IntelligenceTab, LiveTrafficTab, SettlementsTab } from './AdminTabs';
 import { ManageOrderModal, ProductReviewModal, SellerReviewModal } from './AdminModals';
+import CategoryManager from './CategoryManager'; 
+// 🔥 NEW: Import the Attribute Manager
+import AttributeManager from './AttributeManager'; 
 
 const TabButton = ({ label, isActive, onClick, alertCount }) => (
   <button onClick={onClick} style={{ padding: '12px 20px', fontSize: '16px', fontWeight: 'bold', background: 'none', border: 'none', borderBottom: isActive ? '4px solid #007bff' : '4px solid transparent', color: isActive ? '#007bff' : '#666', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', whiteSpace: 'nowrap' }}>
@@ -162,7 +165,6 @@ function AdminDashboard({ user }) {
     }
   };
 
-  // 🔥 NEW: Handle Admin Commission Override
   const handleUpdateCommission = async (sellerId, currentRate, storeName) => {
       const currentPercent = (currentRate * 100).toFixed(1);
       const input = window.prompt(`Admin Override: Set new commission rate for ${storeName}\n\nCurrent Rate: ${currentPercent}%\n\nEnter new rate as a percentage (e.g. type '12.5' for 12.5%):`, currentPercent);
@@ -184,7 +186,7 @@ function AdminDashboard({ user }) {
           });
           
           alert(`Success! Commission rate for ${storeName} updated to ${newRatePercent}%`);
-          fetchData(); // Refresh the data to show the new rate instantly
+          fetchData(); 
       } catch (err) {
           alert("Action failed: " + err.message);
       }
@@ -265,13 +267,16 @@ function AdminDashboard({ user }) {
       <div style={{ display: 'flex', borderBottom: '2px solid #ddd', marginBottom: '25px', gap: '30px', overflowX: 'auto', paddingBottom: '5px' }}>
         <TabButton label="📊 Action Overview" isActive={activeTab === 'overview'} onClick={() => setActiveTab('overview')} alertCount={pendingSellers.length} />
         <TabButton label="📡 Live Traffic" isActive={activeTab === 'live'} onClick={() => setActiveTab('live')} />
-        <TabButton label="📈 Marketplace Intelligence" isActive={activeTab === 'intelligence'} onClick={() => setActiveTab('intelligence')} />
-        <TabButton label="📦 Product Moderation" isActive={activeTab === 'products'} onClick={() => setActiveTab('products')} alertCount={allProducts.filter(p => (p.fixSubmitted || p.FixSubmitted) && p.IsArchived).length} />
-        <TabButton label="🚛 All Shipments" isActive={activeTab === 'orders'} onClick={() => setActiveTab('orders')} alertCount={allOrders.filter(o => o.Status === 'Placed' && o.HoursSincePlaced > 48).length} />
+        <TabButton label="📈 Intelligence" isActive={activeTab === 'intelligence'} onClick={() => setActiveTab('intelligence')} />
+        <TabButton label="📦 Products" isActive={activeTab === 'products'} onClick={() => setActiveTab('products')} alertCount={allProducts.filter(p => (p.fixSubmitted || p.FixSubmitted) && p.IsArchived).length} />
+        <TabButton label="🚛 Shipments" isActive={activeTab === 'orders'} onClick={() => setActiveTab('orders')} />
         <TabButton label="🏦 Settlements" isActive={activeTab === 'settlements'} onClick={() => setActiveTab('settlements')} alertCount={settlements.length} />
-        <TabButton label="🏪 Manage Sellers" isActive={activeTab === 'sellers'} onClick={() => setActiveTab('sellers')} />
-        <TabButton label="🛍️ Manage Buyers" isActive={activeTab === 'buyers'} onClick={() => setActiveTab('buyers')} />
-        <TabButton label="🛡️ Security & Logs" isActive={activeTab === 'security'} onClick={() => setActiveTab('security')} />
+        <TabButton label="🏪 Sellers" isActive={activeTab === 'sellers'} onClick={() => setActiveTab('sellers')} />
+        <TabButton label="🛍️ Buyers" isActive={activeTab === 'buyers'} onClick={() => setActiveTab('buyers')} />
+        <TabButton label="📂 Categories" isActive={activeTab === 'categories'} onClick={() => setActiveTab('categories')} />
+        {/* 🔥 NEW: Added Attributes Tab Button */}
+        <TabButton label="🏷️ Attributes" isActive={activeTab === 'attributes'} onClick={() => setActiveTab('attributes')} />
+        <TabButton label="🛡️ Security" isActive={activeTab === 'security'} onClick={() => setActiveTab('security')} />
       </div>
 
       {activeTab === 'overview' && (
@@ -315,11 +320,15 @@ function AdminDashboard({ user }) {
 
       {activeTab === 'products' && <ProductsTab filteredProducts={filteredProducts} productSearch={productSearch} setProductSearch={setProductSearch} setViewingProduct={setViewingProduct} handleToggleProduct={handleToggleProduct} />}
       
-      {/* 🔥 NEW: Passed handleUpdateCommission down to SellersTab */}
       {activeTab === 'sellers' && <SellersTab activeSellers={activeSellers} allUsers={allUsers} handleAction={handleAction} handleUpdateCommission={handleUpdateCommission} />}
       
       {activeTab === 'buyers' && <BuyersTab activeBuyers={activeBuyers} allUsers={allUsers} handleAction={handleAction} />}
       
+      {activeTab === 'categories' && <CategoryManager />}
+
+      {/* 🔥 NEW: Render Attribute Manager when active */}
+      {activeTab === 'attributes' && <AttributeManager />}
+
       {activeTab === 'security' && (
         <SecurityTab 
             logs={securityLogs} 

@@ -36,8 +36,34 @@ app.http('PlaceOrder', {
                 newTransactionId = generateTransactionId();
             }
 
-            await sql.connect(connectionString);
+           const pool = await sql.connect(connectionString);
             
+            // 🔥 NEW: PRE-FLIGHT STOCK CHECK
+            // We check stock before starting the transaction so we can return a clean JSON object to React
+            for (const item of cartItems) {
+                const varId = item.variationId || null;
+                const stockCheckQuery = varId
+                    ? `SELECT ISNULL(Stock, 0) as AvailableStock FROM ProductVariations WHERE VariationId = ${varId}`
+                    : `SELECT ISNULL(Stock, 0) as AvailableStock FROM Products WHERE ProductId = ${item.id}`;
+
+                const stockRes = await pool.request().query(stockCheckQuery);
+                const availableStock = stockRes.recordset.length > 0 ? stockRes.recordset[0].AvailableStock : 0;
+
+                if (availableStock < item.qty) {
+                    return {
+                        status: 409,
+                        jsonBody: {
+                            code: 'INSUFFICIENT_STOCK',
+                            itemId: item.id,
+                            variationId: varId,
+                            availableQty: availableStock,
+                            requestedQty: item.qty,
+                            name: item.name
+                        }
+                    };
+                }
+            }
+           
             // --- SECURITY CHECK & STORE PREFIX / COMMISSION FETCH ---
             const sellerIdToCheck = cartItems[0].sellerId;
             let storePrefix = "ORD"; 
@@ -83,47 +109,73 @@ app.http('PlaceOrder', {
 
                 const newOrderId = orderResult.recordset[0].OrderId;
 
-                // B. Loop through items
+                // B. Loop through items (🔥 UPGRADED FOR VARIATIONS)
                 for (const item of cartItems) {
+                    const varId = item.variationId || null;
+                    // Stringify the chosen attributes (e.g. {"Size":"L", "Color":"Red"}) so the seller can see them
+                    const attrs = item.selectedAttributes && Object.keys(item.selectedAttributes).length > 0 
+                        ? JSON.stringify(item.selectedAttributes) 
+                        : null;
+
                     const itemRequest = new sql.Request(transaction);
                     await itemRequest
                         .input('OrderId', sql.Int, newOrderId)
                         .input('ProductId', sql.Int, item.id)      
                         .input('SellerId', sql.Int, item.sellerId) 
+                        .input('VariationId', sql.Int, varId)
+                        .input('VariationAttributes', sql.NVarChar, attrs)
                         .input('Qty', sql.Int, item.qty || 1)
                         .input('Price', sql.Decimal(18, 2), item.price)
                         .input('CommissionRate', sql.Decimal(4, 2), currentSellerCommission) 
                         .query(`
-                            -- FINAL BACKEND VERIFICATION: Only update if enough stock exists
-                            UPDATE Products 
-                            SET Stock = Stock - @Qty 
-                            WHERE ProductId = @ProductId AND Stock >= @Qty;
-
-                            -- If no rows were updated, it means stock was too low!
-                            IF @@ROWCOUNT = 0
+                            -- 🔥 1. SMART STOCK DEDUCTION (NULL-Proof)
+                            IF @VariationId IS NOT NULL 
                             BEGIN
-                                THROW 51000, 'Out of stock! Someone just bought the last unit of an item in your cart.', 1;
+                                UPDATE ProductVariations 
+                                SET Stock = ISNULL(Stock, 0) - @Qty 
+                                WHERE VariationId = @VariationId AND ISNULL(Stock, 0) >= @Qty;
+
+                                IF @@ROWCOUNT = 0
+                                BEGIN
+                                    THROW 51000, 'Out of stock! Someone just bought the last unit of this specific size/color.', 1;
+                                END
+                            END
+                            ELSE 
+                            BEGIN
+                                UPDATE Products 
+                                SET Stock = ISNULL(Stock, 0) - @Qty 
+                                WHERE ProductId = @ProductId AND ISNULL(Stock, 0) >= @Qty;
+
+                                IF @@ROWCOUNT = 0
+                                BEGIN
+                                    THROW 51000, 'Out of stock! Someone just bought the last unit of an item in your cart.', 1;
+                                END
                             END
 
-                            -- 🔥 NEW: Grab the product's CURRENT tax rate & HSN Code
+                            -- 2. Grab the product's CURRENT tax rate & HSN Code
                             DECLARE @CurrentGST DECIMAL(4,2), @CurrentHSN VARCHAR(20);
                             SELECT @CurrentGST = GSTPercentage, @CurrentHSN = HSNCode 
                             FROM Products 
                             WHERE ProductId = @ProductId;
 
-                            -- 🔥 NEW: Insert order item WITH the CommissionRate AND the GST data
-                            INSERT INTO OrderItems (OrderId, ProductId, SellerId, Qty, Price, CommissionRate, GSTPercentage, HSNCode)
-                            VALUES (@OrderId, @ProductId, @SellerId, @Qty, @Price, @CommissionRate, ISNULL(@CurrentGST, 0.18), @CurrentHSN);
+                            -- 3. Insert order item WITH Variation Tracking!
+                            INSERT INTO OrderItems (OrderId, ProductId, SellerId, VariationId, VariationAttributes, Qty, Price, CommissionRate, GSTPercentage, HSNCode)
+                            VALUES (@OrderId, @ProductId, @SellerId, @VariationId, @VariationAttributes, @Qty, @Price, @CommissionRate, ISNULL(@CurrentGST, 0.18), @CurrentHSN);
                         `);
                 }
 
-                // C. Clear Cart (ONLY IF NOT BUY NOW)
+                // C. Clear Cart & Destroy Lock (ONLY IF NOT BUY NOW)
                 if (!isBuyNow) {
                     const clearCartRequest = new sql.Request(transaction);
                     await clearCartRequest.input('UserId', sql.Int, userId)
                         .query(`
-                            DELETE FROM CartItems 
-                            WHERE CartId IN (SELECT CartId FROM Carts WHERE UserId = @UserId)
+                            DECLARE @CartId INT;
+                            SELECT @CartId = CartId FROM Carts WHERE UserId = @UserId;
+                            
+                            IF @CartId IS NOT NULL BEGIN
+                                DELETE FROM CartItems WHERE CartId = @CartId;
+                                DELETE FROM Carts WHERE CartId = @CartId; -- Destroy the lock!
+                            END
                         `);
                 }
 

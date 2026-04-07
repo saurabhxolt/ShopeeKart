@@ -1,270 +1,173 @@
 import React from 'react';
 import ReadMore from '../../components/common/ReadMore';
-import ImageGallery from '../../components/common/ImageGallery';
-import { processFile, parseImages } from '../../utils/imageHelpers';
+import SellerMetrics from './SellerMetrics';
+import SellerFilters from './SellerFilters';
+import SellerProductEdit from './SellerProductEdit';
+
+// 🔥 Helper to safely parse images (Handles DB JSON strings or local arrays)
+const getThumbnailUrl = (imageProp) => {
+    if (!imageProp) return '/placeholder-image.jpg';
+    if (Array.isArray(imageProp)) return imageProp.length > 0 ? imageProp[0] : '/placeholder-image.jpg';
+    if (typeof imageProp === 'string' && imageProp.startsWith('[')) {
+        try {
+            const parsed = JSON.parse(imageProp);
+            return parsed.length > 0 ? parsed[0] : '/placeholder-image.jpg';
+        } catch (e) { return '/placeholder-image.jpg'; }
+    }
+    return imageProp;
+};
 
 const SellerInventoryView = ({
     isMobile, dashboardMetrics, outOfStockCount, trafficData, isTrafficLoading,
     setIsOrdersModalOpen, searchTerm, setSearchTerm, categoryFilter, setCategoryFilter,
     uniqueCategories, stockFilter, setStockFilter, filteredProducts, editingProduct,
     setEditingProduct, handleUpdateProduct, handleToggleVisibility, handleDeleteProduct,
-    handleRestoreProduct, // 🔥 RESTORE PROP
-    archiveFilter, setArchiveFilter 
+    handleRestoreProduct, archiveFilter, setArchiveFilter 
 }) => {
+
+    // --- 1. EDIT MODE ---
+    if (editingProduct) {
+        return (
+            <SellerProductEdit 
+                isMobile={isMobile}
+                editingProduct={editingProduct}
+                setEditingProduct={setEditingProduct}
+                handleUpdateProduct={handleUpdateProduct}
+            />
+        );
+    }
+
+    // --- 2. INVENTORY LIST VIEW ---
     return (
         <>
-            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(auto-fit, minmax(180px, 1fr))', gap: '15px', marginBottom: '25px', width: '100%', boxSizing: 'border-box' }}>
-                <div style={{ background: 'white', padding: '20px', borderRadius: '10px', boxShadow: '0 2px 8px rgba(0,0,0,0.05)', borderLeft: '4px solid #28a745', width: '100%', boxSizing: 'border-box' }}>
-                    <div style={{ color: '#888', fontSize: '11px', fontWeight: 'bold', textTransform: 'uppercase' }}>Total Revenue</div>
-                    <div style={{ fontSize: isMobile ? '20px' : '24px', fontWeight: 'bold', color: '#333', marginTop: '5px' }}>Rs. {dashboardMetrics.revenue}</div>
-                </div>
-                <div style={{ background: 'white', padding: '20px', borderRadius: '10px', boxShadow: '0 2px 8px rgba(0,0,0,0.05)', borderLeft: '4px solid #17a2b8', width: '100%', boxSizing: 'border-box' }}>
-                    <div style={{ color: '#888', fontSize: '11px', fontWeight: 'bold', textTransform: 'uppercase' }}>Total Orders</div>
-                    <div style={{ fontSize: isMobile ? '20px' : '24px', fontWeight: 'bold', color: '#333', marginTop: '5px' }}>{dashboardMetrics.totalOrders}</div>
-                </div>
-                <div 
-                    onClick={() => setIsOrdersModalOpen(true)}
-                    onMouseOver={(e) => { e.currentTarget.style.transform = 'translateY(-3px)'; e.currentTarget.style.boxShadow = '0 6px 12px rgba(0,0,0,0.1)'; }}
-                    onMouseOut={(e) => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.05)'; }}
-                    style={{ background: 'white', padding: '20px', borderRadius: '10px', boxShadow: '0 2px 8px rgba(0,0,0,0.05)', borderLeft: '4px solid #ffc107', cursor: 'pointer', transition: 'all 0.2s ease', width: '100%', boxSizing: 'border-box' }}
-                >
-                    <div style={{ color: '#888', fontSize: '11px', fontWeight: 'bold', textTransform: 'uppercase', display: 'flex', justifyContent: 'space-between' }}>
-                        Pending <span style={{fontSize: '14px', display: isMobile ? 'none' : 'inline'}}>👆</span>
-                    </div>
-                    <div style={{ fontSize: isMobile ? '20px' : '24px', fontWeight: 'bold', color: '#333', marginTop: '5px' }}>{dashboardMetrics.pendingOrders}</div>
-                </div>
-                <div style={{ background: 'white', padding: '20px', borderRadius: '10px', boxShadow: '0 2px 8px rgba(0,0,0,0.05)', borderLeft: `4px solid ${outOfStockCount > 0 ? '#dc3545' : '#e9ecef'}`, width: '100%', boxSizing: 'border-box' }}>
-                    <div style={{ color: '#888', fontSize: '11px', fontWeight: 'bold', textTransform: 'uppercase' }}>Out of Stock</div>
-                    <div style={{ fontSize: isMobile ? '20px' : '24px', fontWeight: 'bold', color: outOfStockCount > 0 ? '#dc3545' : '#333', marginTop: '5px' }}>{outOfStockCount}</div>
-                </div>
-            </div>
+            <SellerMetrics 
+                isMobile={isMobile} 
+                dashboardMetrics={dashboardMetrics} 
+                outOfStockCount={outOfStockCount} 
+                setIsOrdersModalOpen={setIsOrdersModalOpen} 
+            />
 
-            {/* Filters */}
-            <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: '10px', marginBottom: '25px', background: 'white', padding: '15px', borderRadius: '8px', boxShadow: '0 2px 5px rgba(0,0,0,0.05)', border: '1px solid #eee', width: '100%', boxSizing: 'border-box' }}>
-                <input type="text" placeholder="🔍 Search by Name or SKU..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} style={{ flex: 1.5, padding: '10px', borderRadius: '6px', border: '1px solid #ccc', width: '100%', boxSizing: 'border-box' }} />
-                <div style={{ display: 'flex', gap: '10px', width: '100%', flex: 2 }}>
-                    
-                    <select value={archiveFilter} onChange={(e) => setArchiveFilter(e.target.value)} style={{ flex: 1, padding: '10px', borderRadius: '6px', border: '1px solid #ccc', width: '33%', fontWeight: 'bold', color: archiveFilter === 'ARCHIVED' ? '#dc3545' : '#333' }}>
-                        <option value="ACTIVE">✅ Active Listings</option>
-                        <option value="ARCHIVED">🗑️ Trash / Archived</option>
-                    </select>
+            <SellerFilters 
+                isMobile={isMobile}
+                searchTerm={searchTerm}
+                setSearchTerm={setSearchTerm}
+                archiveFilter={archiveFilter}
+                setArchiveFilter={setArchiveFilter}
+                categoryFilter={categoryFilter}
+                setCategoryFilter={setCategoryFilter}
+                uniqueCategories={uniqueCategories}
+                stockFilter={stockFilter}
+                setStockFilter={setStockFilter}
+            />
 
-                    <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)} style={{ flex: 1, padding: '10px', borderRadius: '6px', border: '1px solid #ccc', width: '33%' }}>
-                        {uniqueCategories.map(cat => ( <option key={cat} value={cat}>{cat === 'ALL' ? 'All Categories' : cat.toUpperCase()}</option> ))}
-                    </select>
-                    <select value={stockFilter} onChange={(e) => setStockFilter(e.target.value)} style={{ flex: 1, padding: '10px', borderRadius: '6px', border: '1px solid #ccc', width: '33%' }}>
-                        <option value="ALL">All Stock Status</option>
-                        <option value="IN_STOCK">In Stock</option>
-                        <option value="OUT_OF_STOCK">Out of Stock</option>
-                    </select>
-                </div>
-            </div>
-
-            {/* Product List Grid */}
-            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(auto-fill, minmax(300px, 1fr))', gap: isMobile ? '10px' : '20px', width: '100%', boxSizing: 'border-box' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(auto-fill, minmax(280px, 1fr))', gap: isMobile ? '10px' : '20px', width: '100%', boxSizing: 'border-box' }}>
                 {filteredProducts.length === 0 ? (
                     <div style={{ width: '100%', textAlign: 'center', padding: '40px', color: '#888', gridColumn: '1 / -1' }}>
                         {archiveFilter === 'ARCHIVED' ? 'Your trash is empty.' : 'No products match your search or filters.'}
                     </div>
                 ) : (
-                    filteredProducts.map((p, i) => (
-                    <div key={i} style={{ 
-                        border: p.isArchived ? '2px solid #dc3545' : (p.isDeleted ? '1px solid #6c757d' : '1px solid #ccc'), 
-                        padding: isMobile ? 10 : 15, borderRadius: 12, 
-                        background: p.isArchived ? '#fff5f5' : (p.isDeleted ? '#f8f9fa' : 'white'), 
-                        boxShadow: '0 2px 5px rgba(0,0,0,0.1)', position: 'relative', 
-                        opacity: (p.qty <= 0 || p.isActive === false || p.isDeleted) ? 0.6 : 1, 
-                        transition: 'all 0.3s ease',
-                        display: 'flex', flexDirection: 'column', width: '100%', boxSizing: 'border-box'
-                    }}>
-                        
-                        {p.isArchived ? (
-                            <div style={{ position: 'absolute', top: '10px', right: '10px', background: '#dc3545', color: 'white', padding: '4px 8px', borderRadius: '4px', fontWeight: 'bold', fontSize: '9px', zIndex: 10, letterSpacing: '0.5px', boxShadow: '0 2px 4px rgba(0,0,0,0.2)', border: '1px solid white' }}>
-                                🚫 BANNED
-                            </div>
-                        ) : p.isDeleted ? (
-                            <div style={{ position: 'absolute', top: '10px', right: '10px', background: '#6c757d', color: 'white', padding: '4px 8px', borderRadius: '4px', fontWeight: 'bold', fontSize: '9px', zIndex: 10, letterSpacing: '0.5px', boxShadow: '0 2px 4px rgba(0,0,0,0.2)', border: '1px solid white' }}>
-                                🗑️ TRASHED
-                            </div>
-                        ) : p.qty <= 0 ? (
-                            <div style={{ position: 'absolute', top: '10px', left: '10px', background: '#dc3545', color: 'white', padding: '4px 8px', borderRadius: '4px', fontWeight: 'bold', fontSize: '9px', zIndex: 10, letterSpacing: '0.5px', boxShadow: '0 2px 4px rgba(0,0,0,0.2)' }}>
-                                OUT OF STOCK
-                            </div>
-                        ) : p.isActive === false && (
-                            <div style={{ position: 'absolute', top: '10px', right: '10px', background: '#6c757d', color: 'white', padding: '4px 8px', borderRadius: '4px', fontWeight: 'bold', fontSize: '9px', zIndex: 10, letterSpacing: '0.5px', boxShadow: '0 2px 4px rgba(0,0,0,0.2)' }}>
-                                DRAFT (HIDDEN)
-                            </div>
-                        )}
+                    filteredProducts.map((p, i) => {
+                        // Smart Stock Logic
+                        const hasVariations = p.variations && p.variations.length > 0;
+                        const isFullyOutOfStock = p.stock <= 0;
+                        // 🔥 Logic: Parent has stock, but at least one size/color is at 0
+                        const hasSoldOutVariant = hasVariations && p.variations.some(v => v.stock <= 0);
 
-                        {editingProduct?.id === p.id ? (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', width: '100%' }}>
-                            <h4 style={{ color: '#007bff', margin: '0 0 5px 0', fontSize: '14px' }}>Editing: {p.name}</h4>
-                            
-                            <label style={{ fontSize: '11px', fontWeight: 'bold' }}>Name & SKU</label>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', width: '100%' }}>
-                                <input value={editingProduct.name} onChange={(e) => setEditingProduct({...editingProduct, name: e.target.value})} style={{ padding: '6px', width: '100%', boxSizing: 'border-box' }} />
-                                <input placeholder="SKU" value={editingProduct.sku || ''} onChange={(e) => setEditingProduct({...editingProduct, sku: e.target.value})} style={{ padding: '6px', width: '100%', boxSizing: 'border-box' }} />
-                            </div>
-                            
-                            <label style={{ fontSize: '11px', fontWeight: 'bold' }}>Pricing (Price vs MRP)</label>
-                            <div style={{ display: 'flex', gap: '5px', width: '100%' }}>
-                                <input type="number" value={editingProduct.price} onChange={(e) => setEditingProduct({...editingProduct, price: e.target.value})} style={{ padding: '6px', flex: 1, boxSizing: 'border-box', minWidth: '0' }} />
-                                <input type="number" placeholder="MRP" value={editingProduct.originalPrice || ''} onChange={(e) => setEditingProduct({...editingProduct, originalPrice: e.target.value})} style={{ padding: '6px', flex: 1, boxSizing: 'border-box', minWidth: '0' }} />
-                            </div>
-                            
-                            <label style={{ fontSize: '11px', fontWeight: 'bold' }}>Stock & Weight</label>
-                            <div style={{ display: 'flex', gap: '5px', width: '100%' }}>
-                                <input type="number" value={editingProduct.qty} onChange={(e) => setEditingProduct({...editingProduct, qty: e.target.value})} style={{ padding: '6px', flex: 1, boxSizing: 'border-box', minWidth: '0' }} />
-                                <input type="number" placeholder="Weight" value={editingProduct.weight || ''} onChange={(e) => setEditingProduct({...editingProduct, weight: e.target.value})} style={{ padding: '6px', flex: 1, boxSizing: 'border-box', minWidth: '0' }} />
-                            </div>
-                            
-                            <label style={{ fontSize: '11px', fontWeight: 'bold' }}>Details</label>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', width: '100%' }}>
-                                <input placeholder="Brand" value={editingProduct.brand || ''} onChange={(e) => setEditingProduct({...editingProduct, brand: e.target.value})} style={{ padding: '6px', width: '100%', boxSizing: 'border-box' }} />
-                                <input placeholder="Category" value={editingProduct.category || ''} onChange={(e) => setEditingProduct({...editingProduct, category: e.target.value})} style={{ padding: '6px', width: '100%', boxSizing: 'border-box' }} />
-                            </div>
-                            
-                            <textarea placeholder="Description" value={editingProduct.description || ''} onChange={(e) => setEditingProduct({...editingProduct, description: e.target.value})} style={{ padding: '6px', height: '60px', boxSizing: 'border-box', fontFamily: 'inherit', width: '100%' }} />
-                            
-                            <div style={{ background: '#f8f9fa', padding: '8px', borderRadius: '6px', border: '1px solid #e2e8f0', marginTop: '5px' }}>
-                                <label style={{ fontSize: '11px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Tax Info (GST & HSN) *</label>
-                                <div style={{ display: 'flex', gap: '5px', width: '100%' }}>
-                                    <select 
-                                        value={editingProduct.gstPercentage !== undefined ? editingProduct.gstPercentage : "0.18"} 
-                                        onChange={(e) => setEditingProduct({...editingProduct, gstPercentage: e.target.value})} 
-                                        style={{ padding: '6px', flex: 1, boxSizing: 'border-box', minWidth: '0', fontSize: '11px', borderRadius: '4px', border: '1px solid #ccc' }}
-                                    >
-                                        <option value="0.28">28% GST</option>
-                                        <option value="0.18">18% GST</option>
-                                        <option value="0.12">12% GST</option>
-                                        <option value="0.05">5% GST</option>
-                                        <option value="0.00">0% GST</option>
-                                    </select>
-                                    <input 
-                                        placeholder="HSN Code" 
-                                        value={editingProduct.hsnCode || ''} 
-                                        onChange={(e) => setEditingProduct({...editingProduct, hsnCode: e.target.value})} 
-                                        style={{ padding: '6px', flex: 1, boxSizing: 'border-box', minWidth: '0', fontSize: '11px', borderRadius: '4px', border: '1px solid #ccc' }} 
+                        return (
+                            <div key={i} style={{ 
+                                // 🔥 Highlight problem items with a red border
+                                border: (isFullyOutOfStock || p.isArchived) ? '2px solid #dc3545' : (p.isDeleted ? '1px solid #6c757d' : '1px solid #ccc'), 
+                                padding: isMobile ? 10 : 15, borderRadius: 12, 
+                                background: p.isArchived ? '#fff5f5' : (p.isDeleted ? '#f8f9fa' : 'white'), 
+                                boxShadow: '0 2px 5px rgba(0,0,0,0.1)', position: 'relative', 
+                                // High visibility for OOS items so seller can read details to restock
+                                opacity: (p.isActive === false || p.isDeleted) ? 0.6 : 1, 
+                                transition: 'all 0.3s ease', display: 'flex', flexDirection: 'column', width: '100%', boxSizing: 'border-box'
+                            }}>
+                                
+                                {/* Status Badges */}
+                                {p.isArchived ? (
+                                    <div style={{ position: 'absolute', top: '10px', right: '10px', background: '#dc3545', color: 'white', padding: '4px 8px', borderRadius: '4px', fontWeight: 'bold', fontSize: '9px', zIndex: 10 }}>🚫 BANNED</div>
+                                ) : p.isDeleted ? (
+                                    <div style={{ position: 'absolute', top: '10px', right: '10px', background: '#6c757d', color: 'white', padding: '4px 8px', borderRadius: '4px', fontWeight: 'bold', fontSize: '9px', zIndex: 10 }}>🗑️ TRASHED</div>
+                                ) : isFullyOutOfStock ? (
+                                    <div style={{ position: 'absolute', top: '10px', left: '10px', background: '#dc3545', color: 'white', padding: '4px 8px', borderRadius: '4px', fontWeight: 'bold', fontSize: '9px', zIndex: 10 }}>OUT OF STOCK</div>
+                                ) : p.isActive === false && (
+                                    <div style={{ position: 'absolute', top: '10px', right: '10px', background: '#6c757d', color: 'white', padding: '4px 8px', borderRadius: '4px', fontWeight: 'bold', fontSize: '9px', zIndex: 10 }}>DRAFT</div>
+                                )}
+
+                                <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
+                                    
+                                    <img 
+                                        src={getThumbnailUrl(p.imageUrl)} 
+                                        alt={p.name} 
+                                        style={{ width: '100%', height: isMobile ? '160px' : '200px', objectFit: 'cover', borderRadius: '8px', background: '#f8f9fa' }} 
                                     />
-                                </div>
-                                <label style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', marginTop: '10px', fontSize: '10px', color: '#555', cursor: 'pointer' }}>
-                                    <input 
-                                        type="checkbox" 
-                                        checked={editingProduct.gstConfirm || false} 
-                                        onChange={(e) => setEditingProduct({...editingProduct, gstConfirm: e.target.checked})} 
-                                        style={{ marginTop: '1px', width: '12px', height: '12px' }} 
-                                    />
-                                    <span style={{ lineHeight: '1.4' }}>I confirm the HSN code and GST % are legally accurate.</span>
-                                </label>
-                            </div>
+                                    
+                                    <div style={{ padding: '10px 0', flex: 1, display: 'flex', flexDirection: 'column' }}>
+                                        {/* 🏠 BRAND & BREADCRUMBS */}
+                                        <div style={{ marginBottom: '8px' }}>
+                                            <span style={{ fontSize: '11px', color: '#007bff', fontWeight: 'bold', display: 'block' }}>{p.brand || 'No Brand'}</span>
+                                            <div style={{ fontSize: '9px', color: '#888', display: 'flex', gap: '3px', alignItems: 'center', marginTop: '2px' }}>
+                                                <span>{p.targetGender || p.mainCategory}</span>
+                                                <span style={{ color: '#ccc' }}>›</span>
+                                                <span>{p.categoryGroup}</span>
+                                                <span style={{ color: '#ccc' }}>›</span>
+                                                <span style={{ color: '#555', fontWeight: 'bold' }}>{p.subCategory || p.category}</span>
+                                            </div>
+                                        </div>
 
-                            <label style={{ fontSize: '11px', fontWeight: 'bold', marginTop: '5px' }}>Gallery (Click ✕ to remove):</label>
-                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px', marginBottom: '5px' }}>
-                                {parseImages(editingProduct.imageUrl).map((img, idx) => (
-                                <div key={idx} style={{ position: 'relative', width: '40px', height: '40px' }}>
-                                    <img src={img} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '4px' }} alt="thumb" />
-                                    <button onClick={() => {
-                                        const currentImages = parseImages(editingProduct.imageUrl);
-                                        const updatedImages = currentImages.filter((_, i) => i !== idx);
-                                        setEditingProduct({...editingProduct, imageUrl: JSON.stringify(updatedImages)});
-                                    }} style={{ position: 'absolute', top: '-5px', right: '-5px', background: 'red', color: 'white', border: 'none', borderRadius: '50%', width: '18px', height: '18px', fontSize: '10px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
-                                </div>
-                                ))}
-                            </div>
-                            
-                            <label style={{ fontSize: '11px', fontWeight: 'bold' }}>Add More Images:</label>
-                            <input type="file" multiple onChange={async (e) => {
-                                const currentImages = parseImages(editingProduct.imageUrl);
-                                const newImages = [];
-                                for (let file of e.target.files) { newImages.push(await processFile(file)); }
-                                setEditingProduct({...editingProduct, imageUrl: JSON.stringify([...currentImages, ...newImages])});
-                            }} style={{ fontSize: '11px', maxWidth: '100%' }} />
-                            
-                            {/* 🔥 HERE ARE THE CORRECT SAVE AND CANCEL BUTTONS */}
-                            <div style={{ display: 'flex', gap: '5px', marginTop: '10px' }}>
-                                <button onClick={handleUpdateProduct} style={{ flex: 1, background: '#28a745', color: 'white', border: 'none', padding: '10px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', fontSize: '12px' }}>Save Changes</button>
-                                <button onClick={() => setEditingProduct(null)} style={{ flex: 1, background: '#6c757d', color: 'white', border: 'none', padding: '10px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px' }}>Cancel</button>
-                            </div>
-                        </div>
-                        ) : (
-                        <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
-                            <ImageGallery images={p.imageUrl} />
-                            <div style={{ padding: '10px 0', flex: 1, display: 'flex', flexDirection: 'column' }}>
-                                <span style={{ fontSize: '11px', color: '#007bff', fontWeight: 'bold', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.brand || 'No Brand'}</span>
-                                <h4 style={{ margin: '5px 0', fontSize: isMobile ? '13px' : '16px', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{p.name}</h4>
-                                
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', marginBottom: '5px' }}>
-                                    <span style={{ fontSize: isMobile ? '14px' : '1.2rem', fontWeight: 'bold' }}>Rs.{p.price}</span>
-                                    {p.originalPrice > p.price && (
-                                        <>
-                                            <span style={{ textDecoration: 'line-through', color: '#888', fontSize: isMobile ? '10px' : '0.9rem' }}>Rs.{p.originalPrice}</span>
-                                            <span style={{ color: 'green', fontSize: isMobile ? '10px' : '0.9rem', fontWeight: 'bold' }}>
-                                                ({Math.round(((p.originalPrice - p.price) / p.originalPrice) * 100)}% OFF)
-                                            </span>
-                                        </>
-                                    )}
-                                </div>
+                                        <h4 style={{ margin: '0 0 8px 0', fontSize: isMobile ? '14px' : '15px', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', minHeight: '38px', lineHeight: '1.3' }}>{p.name}</h4>
+                                        
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
+                                            <span style={{ fontSize: '1.1rem', fontWeight: 'bold' }}>₹{p.price}</span>
+                                            {p.originalPrice > p.price && (
+                                                <span style={{ textDecoration: 'line-through', color: '#888', fontSize: '0.85rem' }}>₹{p.originalPrice}</span>
+                                            )}
+                                        </div>
 
-                                <p style={{ fontSize: '11px', color: '#555', marginBottom: '5px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>Stock: <strong style={{ color: p.qty <= 0 ? 'red' : 'inherit' }}>{p.qty}</strong> | SKU: {p.sku || 'N/A'}</p>
-                                
-                                <p style={{ fontSize: '11px', color: '#856404', background: '#fff3cd', padding: '2px 6px', borderRadius: '4px', display: 'inline-block', width: 'fit-content', marginTop: '0', marginBottom: '5px' }}>
-                                    GST: {p.gstPercentage != null ? (p.gstPercentage * 100).toFixed(0) : '18'}% | HSN: {p.hsnCode || 'Pending'}
-                                </p>
-                                
-                                {!isMobile && (
-                                  <div style={{ maxHeight: '75px', overflowY: 'auto', wordBreak: 'break-word', paddingRight: '5px', marginBottom: '10px', fontSize: '12px', color: '#555' }}>
-                                      <ReadMore text={p.description} limit={60} />
-                                  </div>
-                                )}
+                                        {/* 📦 STOCK SECTION */}
+                                        <div style={{ marginBottom: '10px' }}>
+                                            <p style={{ fontSize: '12px', color: '#555', margin: 0 }}>
+                                                Total Stock: <strong style={{ color: isFullyOutOfStock ? '#dc3545' : '#28a745' }}>{p.stock}</strong> 
+                                                {hasVariations && <span style={{ color: '#888', marginLeft: '5px' }}>({p.variations.length} Options)</span>}
+                                            </p>
+                                            
+                                            {/* 🔥 PARTIAL STOCK ALERT */}
+                                            {!isFullyOutOfStock && hasSoldOutVariant && (
+                                                <div style={{ marginTop: '5px', fontSize: '10px', background: '#fff5f5', color: '#dc3545', padding: '4px 8px', borderRadius: '4px', border: '1px solid #feb2b2', fontWeight: 'bold' }}>
+                                                    ⚠️ Some sizes/colors sold out!
+                                                </div>
+                                            )}
+                                        </div>
 
-                                {p.isArchived && (
-                                    <div style={{ padding: '8px', background: '#ffeeba', color: '#856404', borderRadius: '4px', fontSize: '11px', fontWeight: 'bold', border: '1px solid #ffe8a1', marginTop: '10px', marginBottom: '10px', lineHeight: '1.2' }}>
-                                        ⚠️ Moderation Alert<br/>
-                                        <span style={{ fontWeight: 'normal', color: '#666' }}>
-                                            {p.adminMessage ? `Reason: ${p.adminMessage}` : 'This product violates platform policies and has been taken down.'}
-                                        </span>
-                                    </div>
-                                )}
-                                {p.isDeleted && !p.isArchived && (
-                                    <div style={{ padding: '8px', background: '#e9ecef', color: '#495057', borderRadius: '4px', fontSize: '11px', fontWeight: 'bold', border: '1px solid #ced4da', marginTop: '10px', marginBottom: '10px', lineHeight: '1.2' }}>
-                                        🗑️ Moved to Trash<br/>
-                                        <span style={{ fontWeight: 'normal', color: '#666' }}>You deleted this product. It is hidden from buyers.</span>
-                                    </div>
-                                )}
-                                
-                                {/* 🔥 HERE ARE THE VIEW MODE BUTTONS */}
-                                <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: '5px', marginTop: 'auto', paddingTop: '10px' }}>
-                                    {!p.isDeleted && (
-                                        <button 
-                                            disabled={p.isArchived}
-                                            onClick={() => handleToggleVisibility(p)} 
-                                            style={{ 
-                                                flex: 1, 
-                                                background: p.isArchived ? '#ccc' : (p.isActive === false ? '#28a745' : '#6c757d'), 
-                                                color: 'white', border: 'none', padding: '8px', borderRadius: 4, 
-                                                cursor: p.isArchived ? 'not-allowed' : 'pointer', 
-                                                fontWeight: 'bold', fontSize: '11px', width: '100%' 
-                                            }}
-                                        >
-                                            {p.isArchived ? '🚫 Locked' : (p.isActive === false ? '✅ Set Active' : '👁️ Hide')}
-                                        </button>
-                                    )}
-                                    <div style={{ display: 'flex', gap: '5px', width: '100%' }}>
-                                        {!p.isDeleted ? (
-                                            <>
-                                                <button onClick={() => setEditingProduct(p)} style={{ flex: 1, background: '#ffc107', border: 'none', padding: '8px', borderRadius: 4, cursor: 'pointer', fontWeight: 'bold', fontSize: '11px', color: 'black' }}>Edit</button>
-                                                <button onClick={() => handleDeleteProduct(p.id)} style={{ flex: 1, color: 'red', border: '1px solid red', padding: '8px', borderRadius: 4, background: 'white', cursor: 'pointer', fontSize: '11px', fontWeight: 'bold' }}>Delete</button>
-                                            </>
-                                        ) : (
-                                            <button onClick={() => handleRestoreProduct(p.id)} style={{ flex: 1, background: '#17a2b8', color: 'white', border: 'none', padding: '8px', borderRadius: 4, cursor: 'pointer', fontWeight: 'bold', fontSize: '11px' }}>♻️ Restore</button>
-                                        )}
+                                        {/* Action Buttons */}
+                                        <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: '8px', marginTop: 'auto', paddingTop: '10px' }}>
+                                            {!p.isDeleted && (
+                                                <button 
+                                                    disabled={p.isArchived}
+                                                    onClick={() => handleToggleVisibility(p)} 
+                                                    style={{ flex: 1, background: p.isArchived ? '#ccc' : (p.isActive === false ? '#28a745' : '#e2e8f0'), color: (p.isActive === false || p.isArchived) ? 'white' : '#333', border: 'none', padding: '8px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '12px' }}
+                                                >
+                                                    {p.isActive === false ? '✅ Publish' : '👁️ Hide'}
+                                                </button>
+                                            )}
+                                            <div style={{ display: 'flex', gap: '8px', flex: 1 }}>
+                                                {!p.isDeleted ? (
+                                                    <>
+                                                        <button onClick={() => setEditingProduct(p)} style={{ flex: 1, background: '#ffc107', border: 'none', padding: '8px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '12px', color: '#000' }}>Edit</button>
+                                                        <button onClick={() => handleDeleteProduct(p.id)} style={{ flex: 1, color: '#dc3545', border: '1px solid #dc3545', padding: '8px', borderRadius: '6px', background: 'white', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}>Delete</button>
+                                                    </>
+                                                ) : (
+                                                    <button onClick={() => handleRestoreProduct(p.id)} style={{ flex: 1, background: '#17a2b8', color: 'white', border: 'none', padding: '8px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '12px' }}>♻️ Restore</button>
+                                                )}
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
-                        </div>
-                        )}
-                    </div>
-                    ))
+                        );
+                    })
                 )}
             </div>
         </>

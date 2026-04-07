@@ -6,10 +6,9 @@ const SellerDashboardHeader = ({
     setViewMode, 
     setIsProfileModalOpen, 
     setIsAddModalOpen 
-    // 🔥 Removed setIsOrdersModalOpen from props
 }) => {
     
-    // 💡 Bonus: Helper function to keep button styles clean and readable!
+    // Helper function to keep button styles clean and readable!
     const getTabStyle = (tabMode) => ({
         border: 'none', 
         padding: '8px 12px', 
@@ -25,11 +24,14 @@ const SellerDashboardHeader = ({
 
     return (
         <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', justifyContent: 'space-between', alignItems: isMobile ? 'stretch' : 'center', marginBottom: '20px', gap: isMobile ? '15px' : '0' }}>
+            
+            {/* 🔥 FIX: Added 'add-product' to the title logic to prevent the "Subscription Plan" bug */}
             <h2 style={{ margin: 0, fontSize: isMobile ? '22px' : '24px' }}>
                 🏪 {
                     viewMode === 'inventory' ? 'Seller Dashboard' : 
-                    viewMode === 'orders' ? 'Order Management' :   // 🔥 Added dynamic title for Orders
+                    viewMode === 'orders' ? 'Order Management' :   
                     viewMode === 'analytics' ? 'Store Insights' : 
+                    viewMode === 'add-product' ? 'Upload New Product' : 
                     'Subscription Plan'
                 }
             </h2>
@@ -38,10 +40,7 @@ const SellerDashboardHeader = ({
                 {/* View Toggles */}
                 <div style={{ display: 'flex', background: '#eee', padding: '4px', borderRadius: '8px', gap: '4px' }}>
                     <button onClick={() => setViewMode('inventory')} style={getTabStyle('inventory')}>📦 Products</button>
-                    
-                    {/* 🔥 NEW: Orders Tab */}
                     <button onClick={() => setViewMode('orders')} style={getTabStyle('orders')}>🛍️ Orders</button>
-                    
                     <button onClick={() => setViewMode('analytics')} style={getTabStyle('analytics')}>📈 Insights</button>
                     <button onClick={() => setViewMode('subscription')} style={getTabStyle('subscription')}>💎 My Plan</button>
                 </div>
@@ -53,8 +52,6 @@ const SellerDashboardHeader = ({
                 <button onClick={() => setIsAddModalOpen(true)} style={{ backgroundColor: '#28a745', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', width: isMobile ? '100%' : 'auto' }}>
                     + Add New Product
                 </button>
-                
-                {/* 🔥 REMOVED: The old Orders Modal button used to be here */}
             </div>
         </div>
     );

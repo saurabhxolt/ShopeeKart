@@ -15,18 +15,19 @@ app.http('GetAdminProducts', {
                     p.Description,
                     p.OriginalPrice,
                     p.Price, 
-                    p.Category, 
+                    c.Name AS Category, -- 🔥 THE FIX: Get name from Categories table
                     p.Stock AS StockQuantity, 
                     p.IsArchived, 
                     p.AdminMessage,
                     p.ImageUrl AS MainImage,
-                    p.FixSubmitted AS fixSubmitted, -- 🔥 Aliased for React compatibility
+                    p.FixSubmitted AS fixSubmitted, -- Aliased for React compatibility
                     s.StoreName, 
                     s.IsDeleted AS SellerIsDeleted,
                     u.Email as SellerEmail
                 FROM Products p
                 INNER JOIN Sellers s ON p.SellerId = s.SellerId
                 INNER JOIN Users u ON s.UserId = u.UserId
+                LEFT JOIN Categories c ON p.CategoryId = c.CategoryId -- 🔥 THE FIX: Join the new table
                 ORDER BY p.ProductId DESC
             `;
 

@@ -12,13 +12,14 @@ app.http('GetSellerProfile', {
                 return { status: 400, body: "Missing userId" };
             }
 
-            // Connect using your centralized environment variable
             const pool = await sql.connect(process.env.SQL_CONNECTION);
 
-            // 🔥 UPDATED: Using SQL Aliases (AS camelCaseName) and ISNULL to handle all the 
-            // empty string fallbacks natively in the database.
-            const query = `
+            // --- 1. Fetch Basic Seller Info ---
+            const sellerQuery = `
                 SELECT 
+                    SellerId, 
+                    UserId AS userId, 
+                    IsApproved AS isApproved,
                     ISNULL(StoreName, '') AS storeName, 
                     ISNULL(Description, '') AS description, 
                     ISNULL(SupportEmail, '') AS supportEmail, 
@@ -42,17 +43,34 @@ app.http('GetSellerProfile', {
                 WHERE UserId = @userId
             `;
 
-            const result = await pool.request()
+            const sellerResult = await pool.request()
                 .input('userId', sql.Int, parseInt(userId))
-                .query(query);
+                .query(sellerQuery);
 
-            // Check if we actually found a profile
-            if (result.recordset.length === 0) {
+            if (sellerResult.recordset.length === 0) {
                 return { status: 404, body: "Profile not found" };
             }
 
-            // Because of our SQL aliases, recordset[0] is already the perfect JSON object
-            return { status: 200, jsonBody: result.recordset[0] };
+            const sellerProfile = sellerResult.recordset[0];
+
+            // --- 2. Fetch Normalized Categories ---
+            const catQuery = `
+                SELECT CategoryId 
+                FROM SellerCategories 
+                WHERE SellerId = @sellerId
+            `;
+
+            const catResult = await pool.request()
+                .input('sellerId', sql.Int, sellerProfile.SellerId)
+                .query(catQuery);
+
+            // 🔥 Map to Numbers so React checkboxes work perfectly
+            sellerProfile.shopCategories = catResult.recordset.map(row => parseInt(row.CategoryId, 10));
+
+            // Clean up the SellerId so we don't expose primary keys unnecessarily
+            delete sellerProfile.SellerId;
+
+            return { status: 200, jsonBody: sellerProfile };
 
         } catch (error) {
             context.error("GetSellerProfile Error:", error);

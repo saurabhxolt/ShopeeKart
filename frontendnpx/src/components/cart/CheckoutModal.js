@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { parseImages } from '../../utils/imageHelpers';
+import { parseImages } from '../../utils/imageHelpers'; 
 
 const INDIAN_STATES = [
     "Andaman and Nicobar Islands", "Andhra Pradesh", "Arunachal Pradesh", "Assam",
@@ -12,16 +12,29 @@ const INDIAN_STATES = [
     "Tripura", "Uttar Pradesh", "Uttarakhand", "West Bengal"
 ];
 
-const CheckoutModal = ({ isOpen, onClose, cartItems = [], cartTotal, onConfirmOrder, userId, onViewOrders }) => {
+const getFirstImage = (imageProp) => {
+    if (!imageProp) return 'https://via.placeholder.com/50';
+    if (Array.isArray(imageProp) && imageProp.length > 0) return imageProp[0];
+    if (typeof imageProp === 'string') {
+        if (imageProp.startsWith('[')) {
+            try {
+                const parsed = JSON.parse(imageProp);
+                return Array.isArray(parsed) && parsed.length > 0 ? parsed[0] : 'https://via.placeholder.com/50';
+            } catch(e) { return imageProp; }
+        }
+        return imageProp;
+    }
+    return 'https://via.placeholder.com/50';
+};
+
+// 🔥 Added onUpdateQty to props
+const CheckoutModal = ({ isOpen, onClose, cartItems = [], cartTotal, onConfirmOrder, userId, onViewOrders, onUpdateQty }) => {
     
-    // States for handling saved addresses
     const [savedAddresses, setSavedAddresses] = useState([]);
     const [selectedAddressId, setSelectedAddressId] = useState('NEW');
     const [isLoadingAddresses, setIsLoadingAddresses] = useState(false);
 
-    const [formData, setFormData] = useState({
-        fullName: '', phone: '', addressLine: '', pincode: '', city: '', district: '', state: ''
-    });
+    const [formData, setFormData] = useState({ fullName: '', phone: '', addressLine: '', pincode: '', city: '', district: '', state: '' });
     
     const [paymentMethod, setPaymentMethod] = useState('COD');
     const [isPlacingOrder, setIsPlacingOrder] = useState(false);
@@ -30,6 +43,9 @@ const CheckoutModal = ({ isOpen, onClose, cartItems = [], cartTotal, onConfirmOr
     const [orderId, setOrderId] = useState(null);
     const [transactionId, setTransactionId] = useState(null);
     const [error, setError] = useState('');
+    
+    // 🔥 NEW STATE: Holds the conflict data from the backend
+    const [stockConflict, setStockConflict] = useState(null);
 
     const [ratings, setRatings] = useState({});
     const [hoveredStar, setHoveredStar] = useState({});
@@ -55,13 +71,13 @@ const CheckoutModal = ({ isOpen, onClose, cartItems = [], cartTotal, onConfirmOr
             setOrderId(null);
             setTransactionId(null); 
             setError('');
+            setStockConflict(null); // Reset conflict on open
             setIsPlacingOrder(false);
             setIsFetchingPin(false);
             setSelectedAddressId('NEW');
             
-            // 🔥 FIX: Initialize all items to 0 stars instead of 5
             const initRatings = {};
-            cartItems.forEach(item => initRatings[item.id] = 0);
+            cartItems.forEach(item => initRatings[item.id || item.ProductId] = 0);
             setRatings(initRatings);
 
             if (userId) fetchAddresses();
@@ -76,9 +92,7 @@ const CheckoutModal = ({ isOpen, onClose, cartItems = [], cartTotal, onConfirmOr
             if (res.data.length > 0) {
                 setSelectedAddressId(res.data[0].AddressId);
             }
-        } catch (err) {
-            console.error("Failed to fetch addresses", err);
-        } finally {
+        } catch (err) {} finally {
             setIsLoadingAddresses(false);
         }
     };
@@ -91,41 +105,31 @@ const CheckoutModal = ({ isOpen, onClose, cartItems = [], cartTotal, onConfirmOr
         try {
             const res = await axios.get(`https://api.postalpincode.in/pincode/${pin}`);
             const data = res.data[0];
-
             if (data.Status === "Success" && data.PostOffice && data.PostOffice.length > 0) {
                 const location = data.PostOffice[0];
                 setFormData(prev => ({
-                    ...prev,
-                    city: location.Block || location.Region || '', 
-                    district: location.District || '',
-                    state: location.State || ''
+                    ...prev, city: location.Block || location.Region || '', district: location.District || '', state: location.State || ''
                 }));
             } else {
-                setError("Invalid PIN Code. Please enter manually or try again.");
+                setError("Invalid PIN Code. Please enter manually.");
             }
-        } catch (err) {
-            console.error("Error fetching PIN details", err);
-        } finally {
+        } catch (err) {} finally {
             setIsFetchingPin(false);
         }
     };
 
     const handleInputChange = (e) => {
         const { name, value } = e.target;
-        
         if (name === 'phone') {
-            const numericValue = value.replace(/\D/g, '').slice(0, 10);
-            setFormData({ ...formData, phone: numericValue });
+            setFormData({ ...formData, phone: value.replace(/\D/g, '').slice(0, 10) });
             return;
         }
-
         if (name === 'pincode') {
             const numericValue = value.replace(/\D/g, '').slice(0, 6);
             setFormData({ ...formData, pincode: numericValue });
             if (numericValue.length === 6) fetchPincodeDetails(numericValue);
             return;
         }
-
         setFormData({ ...formData, [name]: value });
     };
 
@@ -133,13 +137,15 @@ const CheckoutModal = ({ isOpen, onClose, cartItems = [], cartTotal, onConfirmOr
         let formattedAddress = "";
 
         if (selectedAddressId === 'NEW') {
-            if (!formData.fullName || !formData.phone || !formData.addressLine || !formData.pincode || !formData.city || !formData.state) {
-                return setError("Please fill in all required address fields.");
-            }
-            if (formData.phone.length !== 10) {
-                return setError("Please enter a valid 10-digit mobile number.");
-            }
+            if (!formData.fullName || !formData.phone || !formData.addressLine || !formData.pincode || !formData.city || !formData.state) return setError("Please fill in all required address fields.");
+            if (formData.phone.length !== 10) return setError("Please enter a valid 10-digit mobile number.");
             formattedAddress = `${formData.fullName} | Ph: +91 ${formData.phone}\n${formData.addressLine}\n${formData.city}, Dist: ${formData.district}, ${formData.state} - ${formData.pincode}\nPayment: ${paymentMethod}`;
+            
+            try {
+                await axios.post('http://localhost:7071/api/SaveAddress', {
+                    userId, fullName: formData.fullName, phone: formData.phone, addressLine: formData.addressLine, city: formData.city, state: formData.state, pincode: formData.pincode, district: formData.district || ''
+                });
+            } catch(e) {}
         } else {
             const addr = savedAddresses.find(a => String(a.AddressId) === String(selectedAddressId));
             if (!addr) return setError("Please select a valid address.");
@@ -147,11 +153,11 @@ const CheckoutModal = ({ isOpen, onClose, cartItems = [], cartTotal, onConfirmOr
         }
         
         setError('');
+        setStockConflict(null);
         setIsPlacingOrder(true);
 
         try {
-            const response = await onConfirmOrder(formattedAddress, ratings,paymentMethod);
-            
+            const response = await onConfirmOrder(formattedAddress, ratings, paymentMethod);
             if (response && response.orderId) {
                 setOrderId(response.orderId);
                 setTransactionId(response.transactionId);
@@ -159,9 +165,33 @@ const CheckoutModal = ({ isOpen, onClose, cartItems = [], cartTotal, onConfirmOr
                 setOrderId(response);
             }
         } catch (err) {
-            setError(err.message || "Failed to place order. Please try again.");
+            // 🔥 Catch the specific JSON object sent by our backend pre-flight check
+            if (err && err.code === 'INSUFFICIENT_STOCK') {
+                setStockConflict(err);
+            } else {
+                setError(err.message || "Failed to place order. Please try again.");
+            }
         } finally {
             setIsPlacingOrder(false);
+        }
+    };
+
+    // 🔥 UPGRADED: Handles both updating qty AND kicking the user back if stock is 0
+    const handleAcceptAvailableStock = async () => {
+        if (onUpdateQty && stockConflict) {
+            // 1. Tell the App to update the cart (which will remove it if qty is 0)
+            await onUpdateQty(stockConflict.itemId, stockConflict.availableQty, stockConflict.variationId);
+            
+            // 2. Decide where the user goes next
+            if (stockConflict.availableQty === 0) {
+                // If it's completely out of stock, clear the conflict and close the modal
+                // This drops them exactly where they were (the product page)
+                setStockConflict(null);
+                onClose(); 
+            } else {
+                // If there's still 1 or 2 left, just clear the warning so they can click "Pay"
+                setStockConflict(null); 
+            }
         }
     };
 
@@ -169,7 +199,6 @@ const CheckoutModal = ({ isOpen, onClose, cartItems = [], cartTotal, onConfirmOr
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex', justifyContent: 'center', alignItems: isMobile ? 'flex-end' : 'center', zIndex: 1300, padding: isMobile ? '0' : '20px' }}>
             <div style={{ backgroundColor: 'white', borderRadius: isMobile ? '16px 16px 0 0' : '12px', width: '100%', maxWidth: '1000px', maxHeight: isMobile ? '95vh' : '90vh', overflow: 'hidden', display: 'flex', flexDirection: 'column', position: 'relative', boxShadow: '0 -10px 40px rgba(0,0,0,0.2)' }}>
                 
-                {/* Header */}
                 {!orderId && (
                     <div style={{ background: 'white', padding: '15px 20px', borderBottom: '1px solid #eee', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
                         <h2 style={{ margin: 0, fontSize: '18px', display: 'flex', alignItems: 'center', gap: '8px' }}>🔒 Secure Checkout</h2>
@@ -177,13 +206,11 @@ const CheckoutModal = ({ isOpen, onClose, cartItems = [], cartTotal, onConfirmOr
                     </div>
                 )}
 
-                {/* --- SUCCESS STATE VIEW --- */}
                 {orderId ? (
                     <div style={{ textAlign: 'center', padding: isMobile ? '30px 15px' : '50px 20px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center' }}>
                         <div style={{ fontSize: '70px', marginBottom: '15px', animation: 'bounce 0.5s ease' }}>🎉</div>
                         <h1 style={{ color: '#28a745', margin: '0 0 10px 0', fontSize: isMobile ? '24px' : '32px' }}>Order Confirmed!</h1>
-                        <p style={{ color: '#555', fontSize: '15px', marginBottom: '5px' }}>Your order has been successfully placed.</p>
-                        <p style={{ color: '#888', fontSize: '13px', marginBottom: '25px' }}>Your ratings have been saved.</p>
+                        <p style={{ color: '#555', fontSize: '15px', marginBottom: '25px' }}>Your order has been successfully placed.</p>
                         
                         <div style={{ background: '#f8f9fa', border: '2px dashed #28a745', padding: '20px', borderRadius: '8px', display: 'inline-block', marginBottom: '15px', minWidth: '280px', width: isMobile ? '100%' : 'auto', boxSizing: 'border-box' }}>
                             <span style={{ display: 'block', fontSize: '12px', color: '#666', textTransform: 'uppercase', letterSpacing: '1px' }}>Order ID</span>
@@ -197,12 +224,7 @@ const CheckoutModal = ({ isOpen, onClose, cartItems = [], cartTotal, onConfirmOr
                             )}
                         </div>
 
-                        <div style={{ background: '#e8f5e9', color: '#155724', padding: '12px', borderRadius: '8px', display: 'inline-block', marginBottom: '30px', border: '1px solid #c3e6cb', width: isMobile ? '100%' : 'auto', boxSizing: 'border-box' }}>
-                            <span style={{ fontSize: '16px' }}>📦</span> <strong>Estimated Delivery:</strong>{' '}
-                            {new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toLocaleDateString('en-IN', { weekday: 'short', month: 'short', day: 'numeric' })}
-                        </div>
-
-                        <div style={{ display: 'flex', gap: '15px', justifyContent: 'center', flexDirection: isMobile ? 'column' : 'row', width: isMobile ? '100%' : 'auto' }}>
+                        <div style={{ display: 'flex', gap: '15px', justifyContent: 'center', flexDirection: isMobile ? 'column' : 'row', width: isMobile ? '100%' : 'auto', marginTop: '20px' }}>
                             <button onClick={onClose} style={{ padding: '12px 25px', border: '1px solid #007bff', background: 'white', color: '#007bff', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', fontSize: '15px', transition: 'all 0.2s', width: isMobile ? '100%' : 'auto' }}>
                                 Continue Shopping
                             </button>
@@ -215,9 +237,32 @@ const CheckoutModal = ({ isOpen, onClose, cartItems = [], cartTotal, onConfirmOr
                     <>
                         <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: isMobile ? 'column' : 'row', overflowX: 'hidden' }}>
                             
-                            {/* LEFT COLUMN: FORM */}
+                            {/* LEFT COLUMN */}
                             <div style={{ flex: '1 1 100%', padding: isMobile ? '20px' : '40px', boxSizing: 'border-box' }}>
                                 
+                                {/* 🔥 NEW: Dynamic Stock Conflict UI */}
+                                {stockConflict && (
+                                    <div style={{ background: '#fff3cd', border: '1px solid #ffeeba', padding: '15px', borderRadius: '8px', marginBottom: '25px' }}>
+                                        <div style={{ color: '#856404', fontWeight: 'bold', fontSize: '16px', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                            ⚠️ Inventory Update
+                                        </div>
+                                        <div style={{ color: '#856404', fontSize: '14px', marginBottom: '15px', lineHeight: '1.5' }}>
+                                            Someone just bought some of the items in your cart. We currently only have <strong>{stockConflict.availableQty} unit(s)</strong> of <strong>{stockConflict.name}</strong> left, but you requested {stockConflict.requestedQty}.
+                                        </div>
+                                        <div style={{ display: 'flex', gap: '10px', flexDirection: isMobile ? 'column' : 'row' }}>
+                                            {stockConflict.availableQty > 0 ? (
+                                                <button onClick={handleAcceptAvailableStock} style={{ flex: 1, padding: '10px', background: '#ffc107', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', color: '#212529', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}>
+                                                    Update to remaining {stockConflict.availableQty}
+                                                </button>
+                                            ) : (
+                                                <button onClick={handleAcceptAvailableStock} style={{ flex: 1, padding: '10px', background: '#dc3545', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', color: 'white', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}>
+                                                    Remove & Go Back
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+
                                 {error && (
                                     <div style={{ background: '#f8d7da', color: '#721c24', padding: '12px', borderRadius: '6px', marginBottom: '20px', fontSize: '14px', border: '1px solid #f5c6cb' }}>
                                         {error}
@@ -324,19 +369,27 @@ const CheckoutModal = ({ isOpen, onClose, cartItems = [], cartTotal, onConfirmOr
                                 </div>
                             </div>
 
-                            {/* RIGHT COLUMN: ORDER SUMMARY & RATING */}
+                            {/* RIGHT COLUMN: SUMMARY */}
                             <div style={{ width: isMobile ? '100%' : '400px', background: '#f8f9fa', padding: isMobile ? '20px' : '40px', borderLeft: isMobile ? 'none' : '1px solid #eee', borderTop: isMobile ? '1px solid #eee' : 'none', boxSizing: 'border-box' }}>
                                 <h3 style={{ marginTop: 0, marginBottom: '20px', color: '#333' }}>Order Summary</h3>
                                 
                                 <div style={{ paddingRight: isMobile ? '0' : '10px', marginBottom: '20px' }}>
-                                    {cartItems.map((item, idx) => (
+                                    {cartItems.map((item, idx) => {
+                                        const itemId = item.id || item.ProductId; 
+                                        
+                                        return (
                                         <div key={idx} style={{ background: 'white', borderRadius: '8px', padding: '15px', marginBottom: '15px', border: '1px solid #e9ecef', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
                                             <div style={{ display: 'flex', gap: '15px', marginBottom: '10px' }}>
                                                 <div style={{ width: '50px', height: '50px', background: '#eee', borderRadius: '6px', border: '1px solid #ddd', overflow: 'hidden', flexShrink: 0 }}>
-                                                    <img src={parseImages(item.imageUrl)[0]} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                                    <img src={getFirstImage(item.imageUrl || item.ImageUrl)} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                                                 </div>
                                                 <div style={{ flex: 1, overflow: 'hidden' }}>
                                                     <div style={{ fontWeight: 'bold', fontSize: '14px', color: '#333', marginBottom: '4px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.name}</div>
+                                                    {item.selectedAttributes && Object.keys(item.selectedAttributes).length > 0 && (
+                                                        <div style={{ fontSize: '12px', color: '#666', marginBottom: '4px', fontStyle: 'italic' }}>
+                                                            {Object.entries(item.selectedAttributes).map(([key, val]) => `${key}: ${val}`).join(' | ')}
+                                                        </div>
+                                                    )}
                                                     <div style={{ fontSize: '12px', color: '#888' }}>Qty: {item.qty} | ₹{item.price * item.qty}</div>
                                                 </div>
                                             </div>
@@ -344,13 +397,12 @@ const CheckoutModal = ({ isOpen, onClose, cartItems = [], cartTotal, onConfirmOr
                                             <div style={{ borderTop: '1px dashed #eee', paddingTop: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                                 <span style={{ fontSize: '12px', color: '#666', fontWeight: 'bold', display: 'flex', alignItems: 'center' }}>
                                                     Rate Item:
-                                                    {/* 🔥 FIX: Render the visual nudge if the rating is currently 0 */}
-                                                    {(!ratings[item.id] || ratings[item.id] === 0) && (
+                                                    {(!ratings[itemId] || ratings[itemId] === 0) && (
                                                         <span style={{ color: '#fb641b', fontSize: '11px', marginLeft: '6px', background: '#fff5ec', padding: '2px 6px', borderRadius: '4px', border: '1px solid #fbdcce' }}>
                                                             ✨ Tap to rate
                                                         </span>
                                                     )}
-                                                    {ratings[item.id] > 0 && (
+                                                    {ratings[itemId] > 0 && (
                                                         <span style={{ color: '#28a745', fontSize: '11px', marginLeft: '6px' }}>✓ Rated</span>
                                                     )}
                                                 </span>
@@ -358,12 +410,12 @@ const CheckoutModal = ({ isOpen, onClose, cartItems = [], cartTotal, onConfirmOr
                                                     {[1, 2, 3, 4, 5].map(star => (
                                                         <span 
                                                             key={star}
-                                                            onMouseEnter={() => setHoveredStar({...hoveredStar, [item.id]: star})}
-                                                            onMouseLeave={() => setHoveredStar({...hoveredStar, [item.id]: 0})}
-                                                            onClick={() => setRatings({...ratings, [item.id]: star})}
+                                                            onMouseEnter={() => setHoveredStar({...hoveredStar, [itemId]: star})}
+                                                            onMouseLeave={() => setHoveredStar({...hoveredStar, [itemId]: 0})}
+                                                            onClick={() => setRatings({...ratings, [itemId]: star})}
                                                             style={{ 
                                                                 fontSize: '20px', cursor: 'pointer', lineHeight: '1', transition: 'color 0.2s',
-                                                                color: star <= (hoveredStar[item.id] || ratings[item.id]) ? '#ff9f00' : '#e0e0e0' 
+                                                                color: star <= (hoveredStar[itemId] || ratings[itemId]) ? '#ff9f00' : '#e0e0e0' 
                                                             }}
                                                         >
                                                             ★
@@ -372,7 +424,7 @@ const CheckoutModal = ({ isOpen, onClose, cartItems = [], cartTotal, onConfirmOr
                                                 </div>
                                             </div>
                                         </div>
-                                    ))}
+                                    )})}
                                 </div>
 
                                 <div style={{ borderBottom: '1px solid #dee2e6', paddingBottom: '15px', marginBottom: '15px' }}>
@@ -392,8 +444,8 @@ const CheckoutModal = ({ isOpen, onClose, cartItems = [], cartTotal, onConfirmOr
                                 {!isMobile && (
                                     <button 
                                         onClick={handleSubmit} 
-                                        disabled={isPlacingOrder}
-                                        style={{ width: '100%', padding: '16px', border: 'none', background: isPlacingOrder ? '#6c757d' : '#fb641b', color: 'white', borderRadius: '8px', fontWeight: 'bold', cursor: isPlacingOrder ? 'wait' : 'pointer', fontSize: '18px', transition: 'background 0.2s', boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)' }}
+                                        disabled={isPlacingOrder || stockConflict}
+                                        style={{ width: '100%', padding: '16px', border: 'none', background: isPlacingOrder ? '#6c757d' : (stockConflict ? '#e0e0e0' : '#fb641b'), color: stockConflict ? '#888' : 'white', borderRadius: '8px', fontWeight: 'bold', cursor: isPlacingOrder || stockConflict ? 'not-allowed' : 'pointer', fontSize: '18px', transition: 'background 0.2s', boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)' }}
                                     >
                                         {isPlacingOrder ? 'Processing Order...' : `Pay Rs. ${cartTotal}`}
                                     </button>
@@ -405,8 +457,8 @@ const CheckoutModal = ({ isOpen, onClose, cartItems = [], cartTotal, onConfirmOr
                             <div style={{ flexShrink: 0, padding: '15px', background: 'white', borderTop: '1px solid #e0e0e0', boxShadow: '0 -4px 10px rgba(0,0,0,0.05)' }}>
                                 <button 
                                     onClick={handleSubmit} 
-                                    disabled={isPlacingOrder}
-                                    style={{ width: '100%', padding: '16px', border: 'none', background: isPlacingOrder ? '#6c757d' : '#fb641b', color: 'white', borderRadius: '8px', fontWeight: 'bold', cursor: isPlacingOrder ? 'wait' : 'pointer', fontSize: '18px', transition: 'background 0.2s' }}
+                                    disabled={isPlacingOrder || stockConflict}
+                                    style={{ width: '100%', padding: '16px', border: 'none', background: isPlacingOrder ? '#6c757d' : (stockConflict ? '#e0e0e0' : '#fb641b'), color: stockConflict ? '#888' : 'white', borderRadius: '8px', fontWeight: 'bold', cursor: isPlacingOrder || stockConflict ? 'not-allowed' : 'pointer', fontSize: '18px', transition: 'background 0.2s' }}
                                 >
                                     {isPlacingOrder ? 'Processing...' : `Pay Rs. ${cartTotal}`}
                                 </button>

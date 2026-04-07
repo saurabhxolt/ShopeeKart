@@ -13,12 +13,13 @@ app.http('GetMarketplaceIntelligence', {
                 SELECT 
                     p.Name as ProductName,
                     s.StoreName,
-                    p.Category,
+                    c.Name as Category, -- 🔥 THE FIX: Grab Name from Categories table
                     COUNT(DISTINCT t.LogId) as TotalViews,
                     COUNT(DISTINCT t.UserId) as UniqueShoppers,
                     ISNULL(sales.PurchaseCount, 0) as TotalPurchases
                 FROM Products p
                 JOIN Sellers s ON p.SellerId = s.SellerId
+                LEFT JOIN Categories c ON p.CategoryId = c.CategoryId -- 🔥 THE FIX: Join Categories table
                 LEFT JOIN TrafficLogs t ON p.ProductId = t.ProductId 
                     AND t.CreatedAt >= DATEADD(day, -90, GETDATE())
                 LEFT JOIN (
@@ -29,7 +30,7 @@ app.http('GetMarketplaceIntelligence', {
                     WHERE o.Status != 'Cancelled' AND o.OrderDate >= DATEADD(day, -90, GETDATE())
                     GROUP BY ProductId
                 ) sales ON p.ProductId = sales.ProductId
-                GROUP BY p.Name, s.StoreName, p.Category, sales.PurchaseCount
+                GROUP BY p.Name, s.StoreName, c.Name, sales.PurchaseCount -- 🔥 THE FIX: Group by c.Name instead of p.Category
                 ORDER BY TotalPurchases DESC, TotalViews DESC
             `;
 
